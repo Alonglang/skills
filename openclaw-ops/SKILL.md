@@ -1,5 +1,5 @@
 ---
-name: openclaw-config
+name: openclaw-ops
 description: 管理 OpenClaw 配置——通道、代理、安全和自动导航设置
 version: 1.0.0
 ---
