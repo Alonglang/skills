@@ -1,0 +1,11 @@
+{
+  "owner": "jimmieting",
+  "slug": "openclaw-autoupdate",
+  "displayName": "Openclaw Autoupdate",
+  "latest": {
+    "version": "1.0.2",
+    "publishedAt": 1772201082916,
+    "commit": "https://github.com/openclaw/skills/commit/cee69662a0d8166f85fcf5ce884e56db4bbed9f0"
+  },
+  "history": []
+}

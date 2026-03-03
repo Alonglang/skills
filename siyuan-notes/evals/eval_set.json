@@ -1,0 +1,82 @@
+[
+  {
+    "query": "帮我在思源里找一下最近写的关于项目进展的笔记",
+    "should_trigger": true
+  },
+  {
+    "query": "查一下我思源笔记里标签是'工作'的所有内容",
+    "should_trigger": true
+  },
+  {
+    "query": "我想在思源笔记的'技术'笔记本下新建一个文档，路径是/2026/03/今日总结，内容是今天做了代码审查",
+    "should_trigger": true
+  },
+  {
+    "query": "把这段文字追加到思源笔记里那个ID是20240315xxx的块后面：'- 这个问题已解决'",
+    "should_trigger": true
+  },
+  {
+    "query": "思源里有个块ID 20230901112233-abcdef，帮我把它的内容改成'已完成'",
+    "should_trigger": true
+  },
+  {
+    "query": "我的思源笔记里有个日记文档，能不能把它导出成 markdown 给我？文档 id 是 20240101123456-xxxxxx",
+    "should_trigger": true
+  },
+  {
+    "query": "siyuan 里列出所有笔记本，我想知道现在有哪几个",
+    "should_trigger": true
+  },
+  {
+    "query": "帮我删掉思源里那个块，id是 20231201000000-testid",
+    "should_trigger": true
+  },
+  {
+    "query": "查询我思源笔记最近7天未完成的任务清单",
+    "should_trigger": true
+  },
+  {
+    "query": "在思源笔记里给一个块设置自定义属性 custom-status=done，块id是20240501010101-zzzzzz",
+    "should_trigger": true
+  },
+  {
+    "query": "帮我搜一下思源里有没有包含'季度总结'关键词的文档标题",
+    "should_trigger": true
+  },
+  {
+    "query": "思源笔记的反链怎么查？我想看哪些地方引用了这个块 20210808180320-fqgskfj",
+    "should_trigger": true
+  },
+  {
+    "query": "给我推送一个通知到思源界面，内容是'备份完成'",
+    "should_trigger": true
+  },
+  {
+    "query": "帮我写一个 Python 脚本，读取 CSV 文件然后做数据清洗",
+    "should_trigger": false
+  },
+  {
+    "query": "我用 Obsidian 记笔记，怎么把 Obsidian 里的内容导出到 Notion？",
+    "should_trigger": false
+  },
+  {
+    "query": "怎么用 git 查看某个文件的修改历史？",
+    "should_trigger": false
+  },
+  {
+    "query": "帮我分析一下这段 TypeScript 代码有没有类型错误",
+    "should_trigger": false
+  },
+  {
+    "query": "我想在 Notion 里创建一个数据库，追踪我的读书记录",
+    "should_trigger": false
+  },
+  {
+    "query": "用 SQL 查一下 PostgreSQL 里某张表过去30天的新增数据量",
+    "should_trigger": false
+  },
+  {
+    "query": "帮我总结一下这篇 PDF 文章的主要内容",
+    "should_trigger": false
+  }
+]
