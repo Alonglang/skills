@@ -1,7 +1,7 @@
 ---
 name: hippocampus-memory
 title: "Hippocampus - 记忆系统"
-description: "面向 AI 代理的持久记忆系统。自动编码、衰减和语义强化——就像你大脑中的海马体。基于斯坦福生成代理 (Park et al., 2023)。"
+description: "面向 AI 代理的持久记忆系统。自动编码、衰减和语义强化——就像你大脑中的海马体。当需要保存重要信息到长期记忆、巩固对话记忆、去重记忆片段、语义提炼核心洞察、实现持久记忆存储时触发，基于斯坦福生成代理 (Park et al., 2023)。只要用户要求记住某些信息供将来使用，必须触发此技能。"
 metadata:
   openclaw:
     emoji: "🧠"

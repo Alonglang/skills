@@ -1,13 +1,13 @@
 # Snapshot and Refs
 
-Compact element references that reduce context usage for AI agents.
+Compact element references that reduce context usage dramatically for AI agents.
 
-**Related**: [commands.md](commands.md) for full function reference, [SKILL.md](../SKILL.md) for quick start.
+**Related**: [commands.md](commands.md) for full command reference, [SKILL.md](../SKILL.md) for quick start.
 
 ## Contents
 
 - [How Refs Work](#how-refs-work)
-- [Snapshot Output Format](#snapshot-output-format)
+- [Snapshot Command](#the-snapshot-command)
 - [Using Refs](#using-refs)
 - [Ref Lifecycle](#ref-lifecycle)
 - [Best Practices](#best-practices)
@@ -18,51 +18,46 @@ Compact element references that reduce context usage for AI agents.
 
 Traditional approach:
 ```
-Full DOM/HTML -> AI parses -> CSS selector -> Action (~3000-5000 tokens)
+Full DOM/HTML → AI parses → CSS selector → Action (~3000-5000 tokens)
 ```
 
 agent-browser approach:
 ```
-Compact snapshot -> @refs assigned -> Direct interaction (~200-400 tokens)
+Compact snapshot → @refs assigned → Direct interaction (~200-400 tokens)
 ```
 
-The snapshot extracts interactive elements and assigns short `@e` refs, reducing token usage significantly.
-
-## Snapshot Output Format
+## The Snapshot Command
 
 ```bash
-infsh app run agent-browser --function snapshot --session $SESSION --input '{}'
+# Basic snapshot (shows page structure)
+agent-browser snapshot
+
+# Interactive snapshot (-i flag) - RECOMMENDED
+agent-browser snapshot -i
 ```
 
-**Response `elements_text`:**
+### Snapshot Output Format
 
 ```
-@e1 [a] "Home" href="/"
-@e2 [a] "Products" href="/products"
-@e3 [a] "About" href="/about"
-@e4 [button] "Sign In"
-@e5 [input type="email"] placeholder="Email"
-@e6 [input type="password"] placeholder="Password"
-@e7 [button type="submit"] "Log In"
-@e8 [input type="checkbox"] name="remember"
-```
+Page: Example Site - Home
+URL: https://example.com
 
-**Response `elements` (structured):**
+@e1 [header]
+  @e2 [nav]
+    @e3 [a] "Home"
+    @e4 [a] "Products"
+    @e5 [a] "About"
+  @e6 [button] "Sign In"
 
-```json
-[
-  {
-    "ref": "@e1",
-    "desc": "@e1 [a] \"Home\" href=\"/\"",
-    "tag": "a",
-    "text": "Home",
-    "role": null,
-    "name": null,
-    "href": "/",
-    "input_type": null
-  },
-  ...
-]
+@e7 [main]
+  @e8 [h1] "Welcome"
+  @e9 [form]
+    @e10 [input type="email"] placeholder="Email"
+    @e11 [input type="password"] placeholder="Password"
+    @e12 [button type="submit"] "Log In"
+
+@e13 [footer]
+  @e14 [a] "Privacy Policy"
 ```
 
 ## Using Refs
@@ -71,19 +66,16 @@ Once you have refs, interact directly:
 
 ```bash
 # Click the "Sign In" button
-'{"action": "click", "ref": "@e4"}'
+agent-browser click @e6
 
 # Fill email input
-'{"action": "fill", "ref": "@e5", "text": "user@example.com"}'
+agent-browser fill @e10 "user@example.com"
 
 # Fill password
-'{"action": "fill", "ref": "@e6", "text": "password123"}'
+agent-browser fill @e11 "password123"
 
 # Submit the form
-'{"action": "click", "ref": "@e7"}'
-
-# Check the "remember me" checkbox
-'{"action": "check", "ref": "@e8"}'
+agent-browser click @e12
 ```
 
 ## Ref Lifecycle
@@ -92,80 +84,67 @@ Once you have refs, interact directly:
 
 ```bash
 # Get initial snapshot
-infsh app run agent-browser --function snapshot --session $SESSION --input '{}'
+agent-browser snapshot -i
 # @e1 [button] "Next"
 
 # Click triggers page change
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e1"
-}'
+agent-browser click @e1
 
 # MUST re-snapshot to get new refs!
-infsh app run agent-browser --function snapshot --session $SESSION --input '{}'
-# @e1 [h1] "Page 2"  <- Different element now!
+agent-browser snapshot -i
+# @e1 [h1] "Page 2"  ← Different element now!
 ```
-
-### When to Re-snapshot
-
-Always re-snapshot after:
-
-1. **Navigation** - Clicking links, form submissions, `goto` action
-2. **Dynamic content** - AJAX loads, modals opening, tabs switching
-3. **Page mutations** - JavaScript modifying the DOM
-
-The `interact` function returns a fresh snapshot in its response, so you can often use that instead of a separate snapshot call.
 
 ## Best Practices
 
-### 1. Always Use the Latest Snapshot
+### 1. Always Snapshot Before Interacting
 
 ```bash
-# CORRECT: Use snapshot from previous response
-RESULT=$(infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e1"
-}')
-# Use elements from $RESULT.snapshot for next action
+# CORRECT
+agent-browser open https://example.com
+agent-browser snapshot -i          # Get refs first
+agent-browser click @e1            # Use ref
 
-# WRONG: Using stale refs
-# After navigation, @e1 may point to a completely different element
+# WRONG
+agent-browser open https://example.com
+agent-browser click @e1            # Ref doesn't exist yet!
 ```
 
-### 2. Check Success Before Continuing
+### 2. Re-Snapshot After Navigation
 
 ```bash
-RESULT=$(infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e5"
-}')
-
-SUCCESS=$(echo $RESULT | jq -r '.success')
-if [ "$SUCCESS" != "true" ]; then
-  echo "Click failed: $(echo $RESULT | jq -r '.message')"
-  # Re-snapshot and retry
-fi
+agent-browser click @e5            # Navigates to new page
+agent-browser snapshot -i          # Get new refs
+agent-browser click @e1            # Use new refs
 ```
 
-### 3. Use elements_text for Quick Decisions
+### 3. Re-Snapshot After Dynamic Changes
 
-For AI agents, `elements_text` provides a compact text representation:
-
-```
-@e1 [input type="email"] placeholder="Email"
-@e2 [input type="password"] placeholder="Password"
-@e3 [button] "Submit"
+```bash
+agent-browser click @e1            # Opens dropdown
+agent-browser snapshot -i          # See dropdown items
+agent-browser click @e7            # Select item
 ```
 
-This is often enough to decide which element to interact with without parsing the full `elements` array.
+### 4. Snapshot Specific Regions
+
+For complex pages, snapshot specific areas:
+
+```bash
+# Snapshot just the form
+agent-browser snapshot @e9
+```
 
 ## Ref Notation Details
 
 ```
-@e1 [tag type="value"] "text content" name="attr"
-|    |   |             |              |
-|    |   |             |              +- Additional attributes
-|    |   |             +- Visible text
-|    |   +- Key attributes shown
-|    +- HTML tag name
-+- Unique ref ID
+@e1 [tag type="value"] "text content" placeholder="hint"
+│    │   │             │               │
+│    │   │             │               └─ Additional attributes
+│    │   │             └─ Visible text
+│    │   └─ Key attributes shown
+│    └─ HTML tag name
+└─ Unique ref ID
 ```
 
 ### Common Patterns
@@ -174,78 +153,42 @@ This is often enough to decide which element to interact with without parsing th
 @e1 [button] "Submit"                    # Button with text
 @e2 [input type="email"]                 # Email input
 @e3 [input type="password"]              # Password input
-@e4 [a] "Link Text" href="/page"         # Anchor link
+@e4 [a href="/page"] "Link Text"         # Anchor link
 @e5 [select]                             # Dropdown
 @e6 [textarea] placeholder="Message"     # Text area
-@e7 [input type="file"]                  # File upload
-@e8 [input type="checkbox"] checked      # Checked checkbox
-@e9 [input type="radio"] selected        # Selected radio
-@e10 [button type="submit"] "Send"       # Submit button
+@e7 [div class="modal"]                  # Container (when relevant)
+@e8 [img alt="Logo"]                     # Image
+@e9 [checkbox] checked                   # Checked checkbox
+@e10 [radio] selected                    # Selected radio
 ```
-
-### Elements Captured
-
-The snapshot captures these interactive elements:
-
-- Links (`<a href>`)
-- Buttons (`<button>`, `[role="button"]`)
-- Inputs (`<input>`, `<textarea>`, `<select>`)
-- Clickable elements (`[onclick]`, `[tabindex]`)
-- ARIA roles (`[role="link"]`, `[role="checkbox"]`, etc.)
-
-Non-interactive or hidden elements are filtered out.
 
 ## Troubleshooting
 
-### "Unknown ref" Error
-
-```json
-{
-  "success": false,
-  "message": "Unknown ref: @e15. Run 'snapshot' to get current elements."
-}
-```
-
-**Solution**: Re-snapshot. The page changed and refs are stale.
+### "Ref not found" Error
 
 ```bash
-infsh app run agent-browser --function snapshot --session $SESSION --input '{}'
-# Now use the new refs
+# Ref may have changed - re-snapshot
+agent-browser snapshot -i
 ```
 
-### Element Not in Snapshot
+### Element Not Visible in Snapshot
 
-The element you need might not appear because:
+```bash
+# Scroll down to reveal element
+agent-browser scroll down 1000
+agent-browser snapshot -i
 
-1. **Not visible** - Scroll to reveal it
-   ```bash
-   '{"action": "scroll", "direction": "down", "scroll_amount": 500}'
-   ```
-
-2. **Not interactive** - Use JavaScript to interact
-   ```bash
-   '{"code": "document.querySelector(\".hidden-btn\").click()"}'
-   ```
-
-3. **In iframe** - Currently not supported (use `execute` with JS)
-
-4. **Dynamic** - Wait for it to load
-   ```bash
-   '{"action": "wait", "wait_ms": 2000}'
-   ```
+# Or wait for dynamic content
+agent-browser wait 1000
+agent-browser snapshot -i
+```
 
 ### Too Many Elements
 
-Snapshots are limited to 50 elements. If the page has more:
+```bash
+# Snapshot specific container
+agent-browser snapshot @e5
 
-1. **Scroll** to bring relevant elements into view
-2. **Use JavaScript** to target specific elements
-3. **Navigate** to a more specific page
-
-### Ref Points to Wrong Element
-
-If a ref seems to interact with the wrong element:
-
-1. Re-snapshot to get fresh refs
-2. Check if the page structure changed
-3. Verify with screenshot that the right element is targeted
+# Or use get text for content-only extraction
+agent-browser get text @e5
+```

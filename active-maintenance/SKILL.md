@@ -1,6 +1,6 @@
 ---
 name: active-maintenance
-description: OpenClaw的自动化系统健康和记忆代谢管理
+description: OpenClaw的自动化系统健康和记忆代谢管理。当需要清理OpenClaw临时文件、检查磁盘使用、运行夜间优化、去重记忆片段、压缩上下文、自动维护系统健康时使用，必须在用户提及清理、维护、磁盘空间不足、去重、记忆代谢、OpenClaw优化时触发。
 ---
 
 # 主动维护技能

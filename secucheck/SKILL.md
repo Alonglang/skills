@@ -1,6 +1,6 @@
 ---
 name: secucheck
-description: OpenClaw综合安全审计。扫描7个领域（运行时、通道、代理、cron、技能、会话、网络），支持3个专业级别，上下文感知分析，可视化仪表板。只读本地化报告。
+description: OpenClaw综合安全审计。扫描7个领域（运行时、通道、代理、cron、技能、会话、网络），支持3个专业级别，上下文感知分析，生成可视化仪表板报告。当需要做OpenClaw安全审计、扫描安全问题、检查系统安全风险时必须触发此技能。
 tags: [security, audit, hardening, runtime, dashboard, prompt-injection]
 ---
 

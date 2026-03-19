@@ -1,6 +1,6 @@
 ---
 name: email-best-practices
-description: 用于构建可投递、合规、用户友好的电子邮件的指导。当处理电子邮件投递问题、电子邮件进入垃圾邮件、高退回率、设置 SPF/DKIM/DMARC 身份验证、实现电子邮件捕获、确保合规 (CAN-SPAM、GDPR、CASL)、处理 webhook、重试逻辑或决定事务性与营销时使用。
+description: 用于构建可投递、合规、用户友好的电子邮件的指导。当处理电子邮件投递问题、邮件进入垃圾邮件、高退回率、设置 SPF/DKIM/DMARC 身份验证、实现电子邮件捕获、确保合规 (CAN-SPAM、GDPR、CASL)、处理 webhook、设计重试逻辑、区分事务性与营销邮件时必须触发此技能。只要用户询问邮件 deliverability、反垃圾邮件、邮件合规，就使用此技能。
 ---
 
 # 电子邮件最佳实践

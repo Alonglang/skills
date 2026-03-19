@@ -1,7 +1,8 @@
 ---
 name: openclaw-ops
-description: 管理 OpenClaw 配置——通道、代理、安全和自动导航设置
-version: 1.0.0
+description: 管理 OpenClaw 配置——包括通道、代理、节点、安全、自动化、技能、Web UI 和 TUI 设置。当需要修改OpenClaw配置、管理技能、调整安全设置、配置自动化任务、设置Web UI/TUI时必须触发此技能。
+version: 2.1.0
+lastUpdated: 2026-03-19
 ---
 
 # OpenClaw 配置与运维手册
@@ -15,8 +16,15 @@ version: 1.0.0
 - **完整文档**: https://docs.openclaw.ai/zh-CN
 - **快速开始**: https://docs.openclaw.ai/zh-CN/start/getting-started
 - **配置参考**: https://docs.openclaw.ai/zh-CN/gateway/configuration
+- **配置完整参考**: https://docs.openclaw.ai/zh-CN/gateway/configuration-reference
 - **故障排除**: https://docs.openclaw.ai/zh-CN/gateway/troubleshooting
-- **GitHub 仓库**: https://github.com/openclaw/openclaw
+- **GitHub 仓库**: https://github.com/anomalyco/openclaw
+- **常见问题 (FAQ)**: https://docs.openclaw.ai/zh-CN/help/faq
+- **Control UI**: https://docs.openclaw.ai/zh-CN/web/control-ui
+- **TUI**: https://docs.openclaw.ai/zh-CN/web/tui
+- **ClawHub 技能中心**: https://clawhub.com
+- **节点系统**: https://docs.openclaw.ai/zh-CN/nodes
+- **CLI 参考**: https://docs.openclaw.ai/zh-CN/cli/index
 
 ---
 
@@ -24,7 +32,7 @@ version: 1.0.0
 
 | 命令 | 用途 | 何时使用 |
 |------|------|---------|
-| `openclaw status` | 本地系统摘要（操作系统、更新、Gateway、代理、会话、提供商）| 首次检查、快速概览 |
+| `openclaw status` | 本地系统摘要（操作系统、更新、Gateway、节点、会话、提供商）| 首次检查、快速概览 |
 | `openclaw status --all` | 完整本地诊断（只读、可粘贴、相对安全）| 需要分享调试报告时 |
 | `openclaw status --deep` | 运行 Gateway 健康检查（包括提供商探测）| "已配置"≠"正常工作"时 |
 | `openclaw gateway probe` | Gateway 发现 + 可达性（本地 + 远程目标）| 怀疑在探测错误的 Gateway 时 |
@@ -32,6 +40,12 @@ version: 1.0.0
 | `openclaw gateway status` | 监管程序状态（launchd/systemd）、运行时 PID/退出、最后错误 | 服务"看起来已加载"但没有运行时 |
 | `openclaw logs --follow` | 实时日志流（运行时问题的最佳信号）| 需要实际故障原因时 |
 | `openclaw doctor` | 诊断配置问题、提示修复建议 | 配置错误或需要迁移时 |
+| `openclaw dashboard` | 打开浏览器控制界面（Web UI）| 需要图形界面管理时 |
+| `openclaw tui` | 打开终端界面 | 需要纯文本界面时 |
+| `openclaw security audit` | 审计配置安全状态 | 检查安全配置时 |
+| `openclaw secrets` | 密钥管理和审计 | 管理密钥引用时 |
+| `openclaw nodes status` | 查看已配对节点状态 | 检查节点连接时 |
+| `openclaw memory status` | 查看记忆索引状态 | 检查记忆系统时 |
 
 **分享输出优先**: 使用 `openclaw status --all`（隐藏令牌）。如需粘贴 `openclaw status`，先设置 `OPENCLAW_SHOW_SECRETS=0`。
 
@@ -43,6 +57,10 @@ version: 1.0.0
 ~/.openclaw/
 ├── openclaw.json                    # 主配置——通道、模型、Gateway、技能
 ├── openclaw.json.bak*               # 自动备份 (.bak, .bak.1, .bak.2 ...)
+├── .env                             # 环境变量（可选）
+├── .clawhub/lock.json              # ClawHub 安装记录
+├── node.json                        # 节点主机配置
+├── exec-approvals.json              # Exec 批准配置
 ├── agents/
 │   ├── <agentId>/agent/
 │   │   ├── auth-profiles.json       # 每个代理的认证配置（OAuth + API 密钥）
@@ -63,6 +81,10 @@ version: 1.0.0
 │   ├── memory/                      # 每日日志：YYYY-MM-DD.md、topic-chat.md
 │   ├── skills/                      # 工作区级技能（优先级最高）
 │   └── canvas/                      # Canvas 文件（http://<host>:18793/__openclaw__/canvas/）
+├── sandboxes/                       # 沙箱容器配置
+│   └── <agentId>/
+│       ├── docker-compose.yml       # Docker Compose 配置
+│       └── Dockerfile               # 自定义 Dockerfile
 ├── memory/main.sqlite               # 向量记忆 DB (Gemini 嵌入、FTS5 搜索)
 ├── logs/
 │   ├── gateway.log                  # 运行时日志
@@ -131,6 +153,31 @@ version: 1.0.0
 - 支持嵌套包含（最多10层）
 - 相对路径相对于包含文件解析
 
+### 配置热重载
+
+Gateway 监视 `~/.openclaw/openclaw.json` 并自动应用更改：
+
+```json5
+{
+  gateway: {
+    reload: {
+      mode: "hybrid",      // hybrid | hot | restart | off
+      debounceMs: 300,
+    },
+  },
+}
+```
+
+**Reload 模式：**
+- **`hybrid`** (默认): 立即热应用安全更改，对关键更改自动重启
+- **`hot`**: 仅热应用安全更改，需要重启时记录警告
+- **`restart`**: 任何配置更改都会重启 Gateway
+- **`off`**: 禁用文件监视，更改在下次手动重启时生效
+
+**热重载 vs 重启：**
+- **可热重载**（无需重启）: 渠道、智能体/模型、自动化（hooks/cron）、会话/消息、工具/媒体、UI/日志
+- **需要重启**: Gateway 服务器（port/bind/auth/tailscale/TLS）、基础设施（discovery/canvasHost/plugins）
+
 ### 环境变量替换
 
 在任何字符串值中使用 `${VAR_NAME}` 引用环境变量：
@@ -172,19 +219,22 @@ version: 1.0.0
 
 ### 安全编辑模式
 
-始终：备份、使用 new CLI 编辑、重启。
+始终：备份、使用 new CLI 编辑、必要时重启。
 
 ```bash
 # 方法 1: 使用 openclaw config set（推荐用于单键编辑）
 openclaw config set channels.whatsapp.allowFrom '["+15555550123"]'
+ 
+# 方法 2: Control UI（推荐用于图形界面）
+openclaw dashboard  # 在浏览器中打开配置编辑器
 
-# 方法 2: 使用 config.patch（部分更新，RPC）
+# 方法 3: 使用 config.patch（部分更新，RPC）
 openclaw gateway call config.patch --params '{
   "raw": "{ channels: { whatsapp: { allowFrom: [\"+15555550123\"] } } }",
   "baseHash": "<从 config.get 获取的 hash>"
 }'
 
-# 方法 3: 配置向导
+# 方法 4: 配置向导
 openclaw configure
 ```
 
@@ -221,6 +271,79 @@ ls -lt ~/.openclaw/openclaw.json.bak*
 # 重启前验证 JSON
 python3 -m json.tool ~/.openclaw/openclaw.json > /dev/null && echo "OK" || echo "BROKEN"
 ```
+
+---
+
+## Web 界面
+
+### Control UI（浏览器界面）
+
+OpenClaw 提供基于浏览器的控制界面：
+
+```bash
+# 打开 Control UI
+openclaw dashboard
+
+# 打开但不自动打开浏览器
+openclaw dashboard --no-open
+```
+
+**访问方式：**
+
+- **本地**: `http://127.0.0.1:18789/`
+- **通过 SSH 隧道**: `ssh -N -L 18789:127.0.0.1:18789 user@gateway-host`，然后访问 `http://127.0.0.1:18789/`
+- **通过 Tailscale Serve**: `https://<magicdns>/`（需要配置 `openclaw gateway --tailscale serve`）
+
+**功能：**
+- 聊天界面（与模型直接对话）
+- 渠道状态和配置
+- 会话管理
+- 定时任务（Cron）管理
+- 技能管理
+- 节点管理
+- 配置编辑（支持表单和原始 JSON）
+- 日志查看
+- 系统状态和健康检查
+
+**认证：**
+- 首次连接需要设备配对批准（本地 127.0.0.1 除外）
+- 使用 `openclaw devices approve <requestId>` 批准
+- 支持 Token 和密码认证
+
+### TUI（终端界面）
+
+纯文本终端界面，适合服务器环境：
+
+```bash
+# 打开 TUI
+openclaw tui
+
+# 连接到远程 Gateway
+openclaw tui --url ws://<host>:18789 --token <token>
+
+# 指定会话
+openclaw tui --session main --deliver
+```
+
+**TUI 键盘快捷键：**
+- `Enter`: 发送消息
+- `Esc`: 中止运行
+- `Ctrl+C`: 清除输入（按两次退出）
+- `Ctrl+D`: 退出
+- `Ctrl+L`: 模型选择器
+- `Ctrl+G`: 智能体选择器
+- `Ctrl+P`: 会话选择器
+- `Ctrl+O`: 切换工具输出展开
+- `Ctrl+T`: 切换思考可见性
+
+**TUI 斜杠命令：**
+- `/status`: 显示状态
+- `/agent <id>`: 切换智能体
+- `/session <key>`: 切换会话
+- `/model <provider/model>`: 切换模型
+- `/deliver on/off`: 启用/禁用投递
+- `/new` 或 `/reset`: 重置会话
+- `/abort`: 中止运行
 
 ---
 
@@ -308,6 +431,208 @@ grep -i "HikariPool\|reconnecting\|SSE stream error" ~/.openclaw/logs/gateway.er
 # 4. 检查速率限制
 grep -i "signal.*rate" ~/.openclaw/logs/gateway.err.log | tail -5
 ```
+
+### QQ Bot: 安装与配置
+
+**QQ Bot** 是由社区维护的第三方渠道插件，提供完整的 QQ 机器人支持。
+
+#### 第一步：创建 QQ 机器人
+
+1. 前往 [QQ 开放平台](https://q.qq.com/)，手机 QQ 扫码登录
+2. 点击**创建机器人**，获取 `AppID` 和 `AppSecret`
+3. **AppSecret 只显示一次**，务必立即保存
+
+#### 第二步：安装插件
+
+```bash
+# 通过 OpenClaw CLI 安装（推荐）
+openclaw plugins install @sliverp/qqbot@latest
+
+# 或从源码安装
+git clone https://github.com/sliverp/qqbot.git && cd qqbot
+openclaw plugins install .
+```
+
+#### 第三步：配置
+
+**方式一：通过 CLI 配置（推荐）**
+
+```bash
+openclaw channels add --channel qqbot --token "AppID:AppSecret"
+```
+
+**方式二：手动编辑配置文件**
+
+编辑 `~/.openclaw/openclaw.json`：
+
+```json5
+{
+  "channels": {
+    "qqbot": {
+      "enabled": true,
+      "appId": "你的 AppID",
+      "clientSecret": "你的 AppSecret",
+      "markdownSupport": true,     // 启用 Markdown 格式（需要 QQ 开放平台申请权限）
+      "allowFrom": ["*"],          // 允许发送消息的用户
+      "dmPolicy": "open",           // open / pairing / allowlist
+      // STT 语音转文字（可选）
+      "stt": {
+        "provider": "siliconflow",
+        "model": "FunAudioLLM/SenseVoiceSmall"
+      },
+      // TTS 文字转语音（可选）
+      "tts": {
+        "provider": "openai",
+        "model": "FunAudioLLM/CosyVoice2-0.5B",
+        "voice": "FunAudioLLM/CosyVoice2-0.5B:claire"
+      }
+    }
+  }
+}
+```
+
+#### 多账户配置（多个 QQ 机器人）
+
+```json5
+{
+  "channels": {
+    "qqbot": {
+      "enabled": true,
+      // 默认账户
+      "appId": "111111111",
+      "clientSecret": "secret-of-bot-1",
+      
+      // 更多账户
+      "accounts": {
+        "bot2": {
+          "enabled": true,
+          "appId": "222222222",
+          "clientSecret": "secret-of-bot-2",
+          "allowFrom": ["*"]
+        },
+        "bot3": {
+          "enabled": true,
+          "appId": "333333333",
+          "clientSecret": "secret-of-bot-3"
+        }
+      }
+    }
+  }
+}
+```
+
+通过 CLI 添加第二个机器人：
+
+```bash
+openclaw channels add --channel qqbot --account bot2 --token "222222222:secret-of-bot-2"
+```
+
+#### 向指定用户发送消息
+
+```bash
+# 默认机器人
+openclaw message send --channel "qqbot" \
+  --target "qqbot:c2c:OPENID" \
+  --message "hello"
+
+# 指定机器人账户
+openclaw message send --channel "qqbot" \
+  --account bot2 \
+  --target "qqbot:c2c:OPENID" \
+  --message "hello from bot2"
+```
+
+**Target 格式：**
+| 格式 | 说明 |
+|------|------|
+| `qqbot:c2c:OPENID` | 私聊 |
+| `qqbot:group:GROUP_OPENID` | 群聊 |
+| `qqbot:channel:CHANNEL_ID` | 频道 |
+
+### QQ Bot: 富媒体使用
+
+AI 在回复中使用特殊标签发送富媒体内容：
+
+| 类型 | 标签格式 | 说明 |
+|------|----------|------|
+| 图片 | `<qqimg>/path/to/image.png</qqimg>` | 本地文件或 URL，支持 jpg/png/gif/webp |
+| 语音 | `<qqvoice>/path/to/audio.mp3</qqvoice>` | 支持 mp3/wav/silk/ogg |
+| 文件 | `<qqfile>/path/to/file.pdf</qqfile>` | 任意格式，最大 20MB |
+| 视频 | `<qqvideo>/path/to/video.mp4</qqvideo>` | 本地文件或 URL |
+
+**示例：**
+```markdown
+给你画好了猫咪：
+
+<qqimg>https://example.com/cat.png</qqimg>
+```
+
+**标签容错**：插件自动纠正 30+ 种变体写法，比如 `<qq_img>`、`＜qqimg＞` 都能识别。
+
+### QQ Bot: 语音能力配置
+
+STT（语音转文字）支持两级优先级：
+1. `channels.qqbot.stt`（插件专属）
+2. `tools.media.audio.models[0]`（框架级回退）
+
+配置示例：
+```json5
+{
+  "tools": {
+    "media": {
+      "audio": {
+        "models": [
+          { "provider": "siliconflow", "model": "FunAudioLLM/SenseVoiceSmall" }
+        ]
+      }
+    }
+  }
+}
+```
+
+TTS（文字转语音）同样两级优先级：
+1. `channels.qqbot.ttt`（插件专属）
+2. `messages.tts`（框架级回退）
+
+### QQ Bot: 升级
+
+```bash
+# 通过 OpenClaw 升级（推荐）
+openclaw plugins upgrade @sliverp/qqbot@latest
+
+# 通过 npx 升级
+npx -y @sliverp/qqbot@latest upgrade
+
+# 使用项目自带脚本一键升级
+cd qqbot
+bash ./upgrade-and-run.sh
+
+# 源码升级（手动）
+bash ./scripts/upgrade.sh
+openclaw plugins install .
+openclaw gateway restart
+```
+
+### QQ Bot: 故障排除
+
+```bash
+# 检查插件状态
+openclaw plugins list
+
+# 检查通道配置
+openclaw channels list
+
+# 查看实时日志
+openclaw logs --follow
+
+# 检查配置
+openclaw config get channels.qqbot
+```
+
+**常见问题：**
+- **机器人回复"该机器人去火星了"**：检查 Gateway 是否运行，以及 AppID/AppSecret 是否配置正确
+- **Markdown 不显示**：需要在 QQ 开放平台申请 Markdown 权限
+- **语音无法识别**：检查 STT 配置是否正确，provider 是否存在且有 API 密钥
 
 ### Cron 作业故障
 
@@ -425,16 +750,23 @@ for line in sys.stdin:
 1. 工作区技能:   <workspace>/skills          (最高优先级)
 2. 托管技能:     ~/.openclaw/skills          (共享)
 3. 内置技能:     npm 包或 OpenClaw.app 内置  (最低优先级)
+4. 额外目录:     skills.load.extraDirs      (最低优先级)
 ```
 
 ### ClawHub 使用
 
-**ClawHub 是推荐的技能注册表**
+**ClawHub 是推荐的公共技能注册中心**
 
 ```bash
-# 搜索技能
+# 安装 ClawHub CLI
+npm i -g clawhub  # 或 pnpm add -g clawhub
+
+# 登录
+clawhub login     # 浏览器认证流程
+
+# 搜索技能（支持语义搜索，不仅仅是关键词）
 clawhub search "image generation"
-clawhub explore
+clawhub search "postgres backups"
 
 # 安装到工作区
 clawhub install nano-banana-pro
@@ -447,8 +779,22 @@ clawhub update --all
 
 # 更新特定技能
 clawhub update my-skill
-clawhub update my-skill --force  # 覆盖本地更改
+clawhub update my-skill --force
+
+# 备份/发布技能
+clawhub publish ./my-skill --slug my-skill --name "My Skill" --version 1.0.0
+
+# 同步本地技能（扫描并发布更新）
+clawhub sync
+clawhub sync --all  # 非交互模式
 ```
+
+**ClawHub 特性：**
+- 公开浏览技能及其内容
+- 基于嵌入向量的智能搜索
+- 版本管理和变更日志
+- 技能评级和评论
+- 星标和评论功能
 
 ### 技能配置
 
@@ -476,7 +822,7 @@ clawhub update my-skill --force  # 覆盖本地更改
 }
 ```
 
-### 技能格式
+### 技能格式和门槛
 
 ```markdown
 ---
@@ -487,8 +833,14 @@ metadata:
     "openclaw":
       {
         "emoji": "🚀",
-        "requires": { "bins": ["uv"] },
-        "os": ["darwin", "linux"]
+        "requires": {
+          "bins": ["uv"],
+          "env": ["API_KEY"],
+          "config": ["browser.enabled"]
+        },
+        "os": ["darwin", "linux"],
+        "always": false,
+        "primaryEnv": "API_KEY"
       },
   }
 ---
@@ -497,6 +849,128 @@ metadata:
 
 指令放在这里。仅当技能触发时加载。
 保持简洁，上下文窗口是共享资源。
+```
+
+**门槛字段（metadata.openclaw.requires）：**
+- `always: true`: 始终包含该技能（跳过其他门槛）
+- `bins`: 列表，每个二进制文件必须存在于 PATH 中
+- `anyBins`: 列表，至少一个必须存在于 PATH 中
+- `env`: 列表，环境变量必须存在或在配置中提供
+- `config`: openclaw.json 路径列表，必须为真值
+- `os`: 可选的平台列表（darwin、linux、win32）
+- `primaryEnv`: 与 `skills.entries.<name>.apiKey` 关联的环境变量名称
+
+**沙箱注意事项：**
+- `requires.bins` 在技能加载时在宿主机上检查
+- 如果智能体处于沙箱隔离状态，二进制文件也必须存在于容器内部
+
+---
+
+## 节点系统
+
+### 节点概念
+
+**节点**是连接到 Gateway 的配套设备（macOS/iOS/Android/无头），通过 `role: "node"` 连接到 Gateway WebSocket，暴露命令接口（`canvas.*`、`camera.*`、`system.*` 等）。
+
+**节点 vs Gateway：**
+- Gateway：接收消息、运行模型、路由工具调用
+- 节点：提供额外功能，如本地屏幕/摄像头/画布和命令执行
+
+### 节点配对和状态
+
+```bash
+# 查看待处理的配对请求
+openclaw devices list
+
+# 批准配对请求
+openclaw devices approve <requestId>
+
+# 拒绝配对请求
+openclaw devices reject <requestId>
+
+# 查看已配对节点状态
+openclaw nodes status
+
+# 查看节点详细信息
+openclaw nodes describe --node <id|name|ip>
+
+# 列出所有节点
+openclaw nodes list
+```
+
+### 远程节点主机（system.run）
+
+当 Gateway 在一台机器上运行，而命令需要在另一台机器上执行时使用：
+
+```bash
+# 启动无头节点主机（前台）
+openclaw node run --host <gateway-host> --port 18789 --display-name "Build Node"
+
+# 启动节点主机（服务）
+openclaw node install --host <gateway-host> --port 18789 --display-name "Build Node"
+openclaw node restart
+
+# 在节点上执行命令
+openclaw nodes run --node <id|name|ip> -- echo "Hello from node"
+```
+
+**SSH 隧道访问（loopback 绑定）：**
+```bash
+# 创建 SSH 隧道
+ssh -N -L 18790:127.0.0.1:18789 user@gateway-host
+
+# 通过隧道连接节点主机
+export OPENCLAW_GATEWAY_TOKEN="<token>"
+openclaw node run --host 127.0.0.1 --port 18790
+```
+
+### Canvas 和媒体操作
+
+```bash
+# Canvas 快照
+openclaw nodes canvas snapshot --node <id|name|ip> --format png --max-width 1200
+
+# Canvas 控制
+openclaw nodes canvas present --node <id|name|ip> --target https://example.com
+openclaw nodes canvas navigate https://example.com --node <id|name|ip>
+openclaw nodes canvas eval "document.title" --node <id|name|ip>
+openclaw nodes canvas hide --node <id|name|ip>
+
+# 相机照片
+openclaw nodes camera snap --node <id|name|ip> --facing front
+
+# 相机视频片段
+openclaw nodes camera clip --node <id|name|ip> --duration 10s
+
+# 屏幕录制
+openclaw nodes screen record --node <id|name|ip> --duration 10s --fps 10
+
+# 位置信息
+openclaw nodes location get --node <id|name|ip> --accuracy precise
+```
+
+### 节点通知
+
+```bash
+# 发送通知（仅 macOS）
+openclaw nodes notify --node <id|name|ip> \
+  --title "Ping" \
+  --body "Gateway ready" \
+  --priority active \
+  --delivery system
+```
+
+### Exec 节点绑定
+
+```bash
+# 设置默认节点
+openclaw config set tools.exec.node "node-id-or-name"
+
+# 按智能体覆盖
+openclaw config set agents.list[0].tools.exec.node "node-id-or-name"
+
+# 添加命令到允许列表
+openclaw approvals allowlist add --node <id|name|ip> "/usr/bin/git"
 ```
 
 ---
@@ -566,6 +1040,258 @@ metadata:
     deny: ["read", "write", "exec", "browser"],
   },
 }
+```
+
+---
+
+## 安全和密钥管理
+
+### 安全审计
+
+```bash
+# 安全审计（基本）
+openclaw security audit
+
+# 深度安全审计（包括实时探测）
+openclaw security audit --deep
+
+# 自动修复安全配置
+openclaw security audit --fix
+```
+
+### 密钥管理（Secrets）
+
+OpenClaw 支持 **SecretRef** 机制，提供安全的密钥管理：
+
+```bash
+# 重新加载密钥引用
+openclaw secrets reload
+
+# 密钥审计
+openclaw secrets audit
+
+# 配置密钥提供者
+openclaw secrets configure
+```
+
+### SecretRef 示例
+
+支持三种 SecretRef 源：
+
+```json5
+{
+  // 1. ENV 密钥引用
+  models: {
+    providers: {
+      openai: {
+        apiKey: {
+          source: "env",
+          provider: "default",
+          id: "OPENAI_API_KEY"
+        }
+      }
+    }
+  },
+
+  // 2. FILE 密钥引用
+  skills: {
+    entries: {
+      "nano-banana-pro": {
+        apiKey: {
+          source: "file",
+          provider: "filemain",
+          id: "/skills/entries/nano-banana-pro/apiKey"
+        }
+      }
+    }
+  },
+
+  // 3. EXEC 密钥引用
+  channels: {
+    googlechat: {
+      serviceAccountRef: {
+        source: "exec",
+        provider: "vault",
+        id: "channels/googlechat/serviceAccount"
+      }
+    }
+  }
+}
+```
+
+### Exec 批准
+
+控制哪些命令可以在节点或 Gateway 上执行：
+
+```bash
+# 查看当前批准状态
+openclaw approvals get
+
+# 设置默认策略
+openclaw approvals set security allowlist
+openclaw approvals set ask on-miss
+
+# 添加到允许列表
+openclaw approvals allowlist add --node <id|name|ip> "/usr/bin/git"
+openclaw approvals allowlist remove --node <id|name|ip> "/usr/bin/git"
+
+# 按智能体设置
+openclaw config set agents.list[0].tools.exec.security allowlist
+```
+
+**Exec 批准存储位置：**
+- 节点主机：`~/.openclaw/exec-approvals.json`
+- macOS 应用：设置 → Exec approvals
+
+### 常见安全配置
+
+```json5
+{
+  // 限制渠道访问
+  channels: {
+    whatsapp: {
+      dmPolicy: "pairing",      // 或 allowlist
+      allowFrom: ["+15555550123"],
+      groupPolicy: "allowlist",
+      groups: {
+        "G1234567890": {
+          requireMention: true
+        }
+      }
+    }
+  },
+
+  // 启用沙箱隔离
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "non-main",      // off | non-main | all
+        scope: "agent",        // session | agent | shared
+        workspaceAccess: "ro"  // none | ro | rw
+      }
+    }
+  },
+
+  // 工具策略
+  tools: {
+    exec: {
+      security: "allowlist",    // deny | ask | allowlist | full
+      ask: "on-miss",
+      node: "node-id-or-name"   // 绑定到特定节点
+    }
+  }
+}
+```
+
+---
+
+## 新命令概述
+
+### 定时任务（Cron）
+
+```bash
+# 查看状态
+openclaw cron status
+
+# 列出所有作业
+openclaw cron list
+
+# 添加作业
+openclaw cron add \
+  --name morning-summary \
+  --at "08:00" \
+  --message "Morning summary please"
+
+# 编辑作业
+openclaw cron edit <id> --at "09:00"
+
+# 启用/禁用
+openclaw cron enable <id>
+openclaw cron disable <id>
+
+# 查看运行历史
+openclaw cron runs --id <id> --limit 20
+
+# 手动运行
+openclaw cron run <id>
+```
+
+### 插件管理
+
+```bash
+# 列出插件
+openclaw plugins list
+
+# 安装插件
+openclaw plugins install <path|npm-spec|tgz>
+
+# 启用/禁用
+openclaw plugins enable <id>
+openclaw plugins disable <id>
+
+# 插件诊断
+openclaw plugins doctor
+```
+
+### 沙箱管理
+
+```bash
+# 列出沙箱
+openclaw sandbox list
+
+# 重建沙箱
+openclaw sandbox recreate --agent <id>
+openclaw sandbox recreate --all
+
+# 解释沙箱状态
+openclaw sandbox explain --agent <id>
+```
+
+### 配对管理
+
+```bash
+# 列出待处理请求
+openclaw pairing list
+
+# 批准配对
+openclaw pairing approve <channel> <code>
+
+# 带通知批准
+openclaw pairing approve --channel whatsapp <code> --notify
+```
+
+### 记忆系统
+
+```bash
+# 查看状态
+openclaw memory status
+
+# 重建索引
+openclaw memory index
+
+# 搜索记忆
+openclaw memory search "important note"
+```
+
+### 浏览器管理
+
+```bash
+# 浏览器状态
+openclaw browser status
+
+# 启动/停止
+openclaw browser start
+openclaw browser stop
+
+# 标签页操作
+openclaw browser open <url>
+openclaw browser tabs
+openclaw browser focus <tabId>
+openclaw browser close [tabId]
+
+# 截图和快照
+openclaw browser screenshot
+openclaw browser snapshot --format aria
 ```
 
 ---
@@ -767,15 +1493,41 @@ openclaw status
 
 ## 认证管理
 
+### Setup-Token（推荐）
+
+**Setup-token** 是推荐的认证方式，特别适合 Claude 订阅用户：
+
+```bash
+# 生成 setup-token（在任何机器上运行 Claude Code CLI）
+claude setup-token
+
+# 在 Gateway 主机上粘贴 setup-token
+openclaw models auth paste-token --provider anthropic
+
+# 或在 Gateway 主机上直接生成
+openclaw models auth setup-token --provider anthropic
+
+# 验证状态
+openclaw models status
+```
+
+**支持 setup-token 的提供商：**
+- Anthropic（Claude Pro、Claude Max）
+
 ### OAuth 令牌
 
 ```bash
-# 生成 setup-token（推荐）
-openclaw models auth setup-token --provider anthropic
+# 交互式 OAuth 认证
+openclaw models auth login --provider google-gemini-cli --set-default
+
+# 列出认证配置文件
 openclaw models status
 
-# 粘贴令牌
-openclaw models auth paste-token --provider anthropic
+# 查看认证顺序
+openclaw models auth order get --provider anthropic
+
+# 设置认证顺序
+openclaw models auth order set --provider anthropic profile1 profile2
 ```
 
 ### API 密钥
@@ -849,6 +1601,124 @@ openclaw doctor
 openclaw doctor --fix
 ```
 
+### "Device identity required" / "connect failed"
+
+如果通过纯 HTTP 打开仪表板（如 `http://<lan-ip>:18789/`），浏览器运行在非安全上下文中，会阻止 WebCrypto。
+
+**修复**:
+- 优先使用 HTTPS（Tailscale Serve）
+- 或在本地打开：`http://127.0.0.1:18789/`
+- 如果必须使用 HTTP，启用 `gateway.controlUi.allowInsecureAuth: true`
+
+### 节点无法连接
+
+```bash
+# 检查节点状态
+openclaw nodes status
+
+# 检查待处理的配对请求
+openclaw devices list
+
+# 检查节点主机服务
+openclaw node status
+```
+
+### 技能加载失败
+
+```bash
+# 检查技能状态
+openclaw skills check -v
+
+# 查看技能要求
+openclaw skills info <skill-name>
+
+# 重新加载技能
+openclaw gateway restart  # 技能快照在会话开始时创建
+```
+
+### 沙箱中技能缺少 API 密钥
+
+```bash
+# 技能在主机上工作但在沙箱中失败
+# 原因：沙箱 exec 在 Docker 内运行，不继承主机 process.env
+
+# 修复：设置沙箱环境变量
+openclaw config set agents.defaults.sandbox.docker.env.GEMINI_API_KEY "YOUR_KEY"
+
+# 或重建沙箱
+openclaw sandbox recreate --agent <id>
+```
+
+### 沙箱中缺少二进制文件
+
+```bash
+# 检查沙箱中是否有所需二进制文件
+openclaw sandbox explain --agent <id>
+
+# 安装二进制文件到沙箱
+openclaw config set agents.defaults.sandbox.docker.setupCommand "apt-get update && apt-get install -y curl git"
+
+# 或使用自定义镜像
+openclaw config set agents.defaults.sandbox.docker.image "my-custom-image:latest"
+```
+
+### Control UI 显示 "unauthorized"
+
+```bash
+# 检查 Gateway 状态
+openclaw gateway status
+
+# 检查认证配置
+openclaw config get gateway.auth
+
+# 对于新设备，需要配对
+openclaw devices list
+openclaw devices approve <requestId>
+```
+
+### TUI 无法连接
+
+```bash
+# 检查 Gateway 是否运行
+openclaw status
+
+# 使用正确的 URL 和认证
+openclaw tui --url ws://127.0.0.1:18789 --token <token>
+
+# 或使用密码认证
+openclaw tui --password <password>
+```
+
+### Cron 作业没有触发
+
+```bash
+# 检查 Cron 状态
+openclaw cron status
+
+# 查看作业详情
+openclaw cron list
+
+# 查看运行日志
+openclaw cron runs --id <job-id>
+
+# 手动运行测试
+openclaw cron run <job-id>
+```
+
+### 记忆搜索没有结果
+
+```bash
+# 查看记忆索引状态
+openclaw memory status
+
+# 重建索引
+openclaw memory index
+
+# 查看记忆文件
+cat ~/.openclaw/workspace/MEMORY.md
+ls -la ~/.openclaw/workspace/memory/
+```
+
 ---
 
 ## 服务管理
@@ -895,6 +1765,56 @@ journalctl --user -u openclaw-gateway.service -n 100 --no-pager
 
 ---
 
-## 许可证
+## 更新摘要 (v2.1.0 - 2026-03-19)
 
+本次更新添加了 **QQ Bot 第三方渠道插件** 的完整文档：
+
+### 新增内容：
+
+1. **QQ Bot 安装指南**
+   - 从 QQ 开放平台创建机器人步骤
+   - npm 安装和源码安装方法
+   - 单账户和多账户配置
+
+2. **语音能力配置**
+   - STT（语音转文字）两级配置优先级
+   - TTS（文字转语音）两级配置优先级
+
+3. **富媒体使用方法**
+   - `<qqimg>` `<qqvoice>` `<qqfile>` `<qqvideo>` 标签格式
+   - 支持的文件类型和大小限制
+
+4. **常用命令**
+   - 向指定用户发送消息
+   - 多账户使用 `--account` 参数
+   - 升级方法
+
+5. **故障排除**
+   - 常见问题和解决方法
+   - 调试命令
+
+### QQ Bot 主要功能：
+
+- 🔒 **多场景支持** - C2C 私聊、群聊 @消息、频道消息、频道私信
+- 🖼️ **富媒体消息** - 支持图片、语音、视频、文件的收发
+- 🎙️ **语音能力 (STT/TTS)** - 语音转文字自动转录 & 文字转语音回复
+- ⏰ **定时推送** - 支持定时任务触发后主动推送消息
+- 🔗 **URL 无限制** - 私聊可直接发送 URL
+- ⌨️ **输入状态** - 实时显示"Bot 正在输入中…"状态
+- 🔄 **热更新** - 支持 npm 方式安装和无缝热更新
+- 📝 **Markdown** - 完整支持 Markdown 格式消息
+- 🛠️ **原生命令** - 支持 OpenClaw 原生命令
+
+**技能现在涵盖了 OpenClaw 的所有主流渠道，包括：**
+- WhatsApp（官方内置）
+- Telegram（官方内置）
+- Signal（官方内置）
+- QQ Bot（社区第三方）
+- Discord（官方内置）
+- Slack（官方内置）
+- Google Chat（官方内置）
+
+---
+
+## 许可证
 MIT

@@ -1,6 +1,6 @@
 ---
 name: sleek-design-mobile-apps
-description: 当用户想要设计移动应用、创建屏幕、构建或与他们的 Sleek 项目交互时使用。涵盖高级请求（"设计一个能做 X 的应用"）和具体请求（"列出我的项目"、"创建新项目"、"该屏幕截图"）。
+description: 当用户想要设计移动应用、创建屏幕、构建或与他们的 Sleek 项目交互时必须使用此技能。涵盖高级请求（"设计一个能做 X 的应用"）和具体请求（"列出我的项目"、"创建新项目"、"获取该屏幕截图"）。
 compatibility: 需要 SLEEK_API_KEY 环境变量。网络访问限制为 https://sleek.design 仅限。
 metadata:
   requires-env: SLEEK_API_KEY

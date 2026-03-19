@@ -5,7 +5,7 @@ description: |
   预装：NumPy, Pandas, Matplotlib, requests, BeautifulSoup, Selenium,
   Playwright, MoviePy, Pillow, OpenCV, trimesh 等 100+ 库。
   用于：数据处理、网页抓取、图像处理、视频创建、3D模型处理、PDF生成、API调用、自动化脚本。
-  触发词：python、执行代码、运行脚本、网页抓取、数据分析、图像处理、视频编辑、3D模型、自动化、pandas、matplotlib
+  当用户要求执行Python代码、运行脚本、执行python、数据处理、pandas数据分析、matplotlib可视化时，必须触发此技能。
 allowed-tools: Bash(infsh *)
 ---
 

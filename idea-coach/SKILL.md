@@ -1,6 +1,6 @@
 ---
 name: idea-coach
-description: 面向 AI 的想法/问题/挑战管理者，具有 GitHub 集成。捕获、分类、审查，并帮助将想法发布到仓库。
+description: 面向 AI 的想法/问题/挑战管理者，具有 GitHub 集成。帮助捕获、分类、审查想法，并将想法发布到 GitHub 仓库管理。当用户有新创意、需要梳理问题、管理技术挑战、记录项目想法并发布到 GitHub 时，必须触发此技能。
 version: 0.2.0
 author: moinsen-dev
 commands:

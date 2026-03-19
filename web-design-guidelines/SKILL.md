@@ -1,6 +1,6 @@
 ---
 name: web-design-guidelines
-description: 按照 Web 界面指南审查 UI 代码。当被要求"审查我的 UI"、"检查可访问性"、"审计设计"、"审查 UX"或"针对最佳实践检查我的站点"时使用。
+description: 按照 Web 界面指南审查 UI 代码，检查可访问性、设计合规性和 UX 最佳实践。当被要求"审查我的 UI"、"检查可访问性"、"审计设计"、"审查 UX"或"针对最佳实践检查我的站点"时，必须触发此技能。
 metadata:
   author: vercel
   version: "1.0.0"

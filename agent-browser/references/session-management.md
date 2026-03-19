@@ -1,204 +1,193 @@
 # Session Management
 
-Browser sessions for state persistence and parallel browsing.
+Multiple isolated browser sessions with state persistence and concurrent browsing.
 
 **Related**: [authentication.md](authentication.md) for login patterns, [SKILL.md](../SKILL.md) for quick start.
 
 ## Contents
 
-- [How Sessions Work](#how-sessions-work)
-- [Starting a Session](#starting-a-session)
-- [Using Session IDs](#using-session-ids)
-- [Session State](#session-state)
-- [Parallel Sessions](#parallel-sessions)
+- [Named Sessions](#named-sessions)
+- [Session Isolation Properties](#session-isolation-properties)
+- [Session State Persistence](#session-state-persistence)
+- [Common Patterns](#common-patterns)
+- [Default Session](#default-session)
 - [Session Cleanup](#session-cleanup)
 - [Best Practices](#best-practices)
 
-## How Sessions Work
+## Named Sessions
 
-Each session maintains an isolated browser context with:
+Use `--session` flag to isolate browser contexts:
+
+```bash
+# Session 1: Authentication flow
+agent-browser --session auth open https://app.example.com/login
+
+# Session 2: Public browsing (separate cookies, storage)
+agent-browser --session public open https://example.com
+
+# Commands are isolated by session
+agent-browser --session auth fill @e1 "user@example.com"
+agent-browser --session public get text body
+```
+
+## Session Isolation Properties
+
+Each session has independent:
 - Cookies
 - LocalStorage / SessionStorage
-- Browser history
-- Page state
-- Video recording (if enabled)
+- IndexedDB
+- Cache
+- Browsing history
+- Open tabs
 
-Sessions persist across function calls, allowing multi-step workflows.
+## Session State Persistence
 
-## Starting a Session
-
-Use `--session new` to create a fresh session:
-
-```bash
-RESULT=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://example.com"
-}')
-SESSION_ID=$(echo $RESULT | jq -r '.session_id')
-echo "Session: $SESSION_ID"
-```
-
-## Using Session IDs
-
-All subsequent calls use the session ID:
+### Save Session State
 
 ```bash
-# Navigate
-infsh app run agent-browser --function open --session $SESSION_ID --input '{
-  "url": "https://example.com/page2"
-}'
-
-# Interact
-infsh app run agent-browser --function interact --session $SESSION_ID --input '{
-  "action": "click", "ref": "@e1"
-}'
-
-# Screenshot
-infsh app run agent-browser --function screenshot --session $SESSION_ID --input '{}'
-
-# Close
-infsh app run agent-browser --function close --session $SESSION_ID --input '{}'
+# Save cookies, storage, and auth state
+agent-browser state save /path/to/auth-state.json
 ```
 
-## Session State
+### Load Session State
 
-### What Persists
+```bash
+# Restore saved state
+agent-browser state load /path/to/auth-state.json
 
-Within a session, these persist across calls:
-- Cookies (login state, preferences)
-- LocalStorage and SessionStorage
-- IndexedDB data
-- Browser history (for back/forward)
-- Current page and DOM state
-- Video recording buffer
+# Continue with authenticated session
+agent-browser open https://app.example.com/dashboard
+```
 
-### What Doesn't Persist
+### State File Contents
 
-- Sessions don't persist across server restarts
-- No automatic session recovery
-- Video is only available until close is called
+```json
+{
+  "cookies": [...],
+  "localStorage": {...},
+  "sessionStorage": {...},
+  "origins": [...]
+}
+```
 
-## Parallel Sessions
+## Common Patterns
 
-Run multiple independent sessions simultaneously:
+### Authenticated Session Reuse
 
 ```bash
 #!/bin/bash
-# Scrape multiple sites in parallel
+# Save login state once, reuse many times
 
-# Start sessions
-RESULT1=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://site1.com"
-}')
-SESSION1=$(echo $RESULT1 | jq -r '.session_id')
+STATE_FILE="/tmp/auth-state.json"
 
-RESULT2=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://site2.com"
-}')
-SESSION2=$(echo $RESULT2 | jq -r '.session_id')
+# Check if we have saved state
+if [[ -f "$STATE_FILE" ]]; then
+    agent-browser state load "$STATE_FILE"
+    agent-browser open https://app.example.com/dashboard
+else
+    # Perform login
+    agent-browser open https://app.example.com/login
+    agent-browser snapshot -i
+    agent-browser fill @e1 "$USERNAME"
+    agent-browser fill @e2 "$PASSWORD"
+    agent-browser click @e3
+    agent-browser wait --load networkidle
 
-# Work with each session independently
-infsh app run agent-browser --function screenshot --session $SESSION1 --input '{}' &
-infsh app run agent-browser --function screenshot --session $SESSION2 --input '{}' &
-wait
-
-# Clean up both
-infsh app run agent-browser --function close --session $SESSION1 --input '{}'
-infsh app run agent-browser --function close --session $SESSION2 --input '{}'
+    # Save for future use
+    agent-browser state save "$STATE_FILE"
+fi
 ```
 
-### Use Cases for Parallel Sessions
+### Concurrent Scraping
 
-1. **A/B Testing** - Compare different pages or user experiences
-2. **Multi-site scraping** - Gather data from multiple sources
-3. **Load testing** - Simulate multiple users
-4. **Cross-region testing** - Use different proxies per session
+```bash
+#!/bin/bash
+# Scrape multiple sites concurrently
+
+# Start all sessions
+agent-browser --session site1 open https://site1.com &
+agent-browser --session site2 open https://site2.com &
+agent-browser --session site3 open https://site3.com &
+wait
+
+# Extract from each
+agent-browser --session site1 get text body > site1.txt
+agent-browser --session site2 get text body > site2.txt
+agent-browser --session site3 get text body > site3.txt
+
+# Cleanup
+agent-browser --session site1 close
+agent-browser --session site2 close
+agent-browser --session site3 close
+```
+
+### A/B Testing Sessions
+
+```bash
+# Test different user experiences
+agent-browser --session variant-a open "https://app.com?variant=a"
+agent-browser --session variant-b open "https://app.com?variant=b"
+
+# Compare
+agent-browser --session variant-a screenshot /tmp/variant-a.png
+agent-browser --session variant-b screenshot /tmp/variant-b.png
+```
+
+## Default Session
+
+When `--session` is omitted, commands use the default session:
+
+```bash
+# These use the same default session
+agent-browser open https://example.com
+agent-browser snapshot -i
+agent-browser close  # Closes default session
+```
 
 ## Session Cleanup
 
-Always close sessions when done:
-
 ```bash
-infsh app run agent-browser --function close --session $SESSION_ID --input '{}'
-```
+# Close specific session
+agent-browser --session auth close
 
-**Why close matters:**
-- Releases server resources
-- Returns video recording (if enabled)
-- Prevents resource leaks
-
-### Error Handling
-
-```bash
-#!/bin/bash
-set -e
-
-cleanup() {
-  infsh app run agent-browser --function close --session $SESSION_ID --input '{}' 2>/dev/null || true
-}
-trap cleanup EXIT
-
-SESSION_ID=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://example.com"
-}' | jq -r '.session_id')
-
-# ... your automation ...
-# cleanup runs automatically on exit
+# List active sessions
+agent-browser session list
 ```
 
 ## Best Practices
 
-### 1. Store Session IDs
+### 1. Name Sessions Semantically
 
 ```bash
-# Good: Store for reuse
-SESSION_ID=$(... | jq -r '.session_id')
-infsh ... --session $SESSION_ID ...
+# GOOD: Clear purpose
+agent-browser --session github-auth open https://github.com
+agent-browser --session docs-scrape open https://docs.example.com
 
-# Bad: Parse every time
-infsh ... --session $(... | jq -r '.session_id') ...
+# AVOID: Generic names
+agent-browser --session s1 open https://github.com
 ```
 
-### 2. Close Sessions Promptly
-
-Don't leave sessions open longer than needed. Server resources are limited.
-
-### 3. Use Meaningful Variable Names
+### 2. Always Clean Up
 
 ```bash
-# Good: Clear purpose
-LOGIN_SESSION=$(...)
-SCRAPE_SESSION=$(...)
-
-# Bad: Generic names
-S1=$(...)
-S2=$(...)
+# Close sessions when done
+agent-browser --session auth close
+agent-browser --session scrape close
 ```
 
-### 4. Handle Session Expiry
-
-Sessions may expire after extended inactivity:
+### 3. Handle State Files Securely
 
 ```bash
-# Check if session is still valid
-RESULT=$(infsh app run agent-browser --function snapshot --session $SESSION_ID --input '{}' 2>&1)
-if echo "$RESULT" | grep -q "session not found"; then
-  echo "Session expired, starting new one"
-  SESSION_ID=$(infsh app run agent-browser --function open --session new --input '{
-    "url": "https://example.com"
-  }' | jq -r '.session_id')
-fi
+# Don't commit state files (contain auth tokens!)
+echo "*.auth-state.json" >> .gitignore
+
+# Delete after use
+rm /tmp/auth-state.json
 ```
 
-### 5. One Task Per Session
-
-For clarity, use one session per logical task:
+### 4. Timeout Long Sessions
 
 ```bash
-# Good: Separate sessions for separate tasks
-LOGIN_SESSION=$(...)  # Handle login
-SCRAPE_SESSION=$(...)  # Handle scraping
-
-# Okay for related tasks: One session for a workflow
-SESSION=$(...)
-# login -> navigate -> extract -> close
+# Set timeout for automated scripts
+timeout 60 agent-browser --session long-task get text body
 ```

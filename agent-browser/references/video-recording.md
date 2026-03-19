@@ -2,13 +2,12 @@
 
 Capture browser automation as video for debugging, documentation, or verification.
 
-**Related**: [commands.md](commands.md) for full function reference, [SKILL.md](../SKILL.md) for quick start.
+**Related**: [commands.md](commands.md) for full command reference, [SKILL.md](../SKILL.md) for quick start.
 
 ## Contents
 
 - [Basic Recording](#basic-recording)
-- [Cursor Indicator](#cursor-indicator)
-- [How Recording Works](#how-recording-works)
+- [Recording Commands](#recording-commands)
 - [Use Cases](#use-cases)
 - [Best Practices](#best-practices)
 - [Output Format](#output-format)
@@ -16,65 +15,32 @@ Capture browser automation as video for debugging, documentation, or verificatio
 
 ## Basic Recording
 
-Enable video recording when opening a session:
-
 ```bash
-# Start with recording enabled
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://example.com",
-  "record_video": true
-}' | jq -r '.session_id')
+# Start recording
+agent-browser record start ./demo.webm
 
 # Perform actions
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e1"
-}'
+agent-browser open https://example.com
+agent-browser snapshot -i
+agent-browser click @e1
+agent-browser fill @e2 "test input"
 
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "fill", "ref": "@e2", "text": "test input"
-}'
-
-# Close to get the video
-RESULT=$(infsh app run agent-browser --function close --session $SESSION --input '{}')
-VIDEO=$(echo $RESULT | jq -r '.video')
-echo "Video file: $VIDEO"
+# Stop and save
+agent-browser record stop
 ```
 
-## Cursor Indicator
-
-For demos and documentation, show a visible cursor that follows mouse movements:
+## Recording Commands
 
 ```bash
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://example.com",
-  "record_video": true,
-  "show_cursor": true
-}' | jq -r '.session_id')
+# Start recording to file
+agent-browser record start ./output.webm
+
+# Stop current recording
+agent-browser record stop
+
+# Restart with new file (stops current + starts new)
+agent-browser record restart ./take2.webm
 ```
-
-The cursor appears as a red dot that:
-- Follows mouse movements in real-time
-- Shows click feedback (shrinks on mousedown)
-- Persists across page navigations
-- Appears in both screenshots and video
-
-This is especially useful for:
-- Tutorial/documentation videos
-- Debugging interaction issues
-- Sharing recordings with non-technical stakeholders
-
-## How Recording Works
-
-1. **Start**: Pass `"record_video": true` in the `open` function
-2. **Record**: All browser activity is captured throughout the session
-3. **Stop**: Video is finalized when `close` is called
-4. **Retrieve**: Video file is returned in the `close` response
-
-The video captures:
-- Page loads and navigations
-- Element interactions (clicks, typing)
-- Scrolling and animations
-- Dynamic content changes
 
 ## Use Cases
 
@@ -84,203 +50,124 @@ The video captures:
 #!/bin/bash
 # Record automation for debugging
 
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://app.example.com",
-  "record_video": true
-}' | jq -r '.session_id')
+agent-browser record start ./debug-$(date +%Y%m%d-%H%M%S).webm
 
-# Run automation
-RESULT=$(infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e1"
-}')
+# Run your automation
+agent-browser open https://app.example.com
+agent-browser snapshot -i
+agent-browser click @e1 || {
+    echo "Click failed - check recording"
+    agent-browser record stop
+    exit 1
+}
 
-SUCCESS=$(echo $RESULT | jq -r '.success')
-if [ "$SUCCESS" != "true" ]; then
-  echo "Action failed!"
-  echo "Message: $(echo $RESULT | jq -r '.message')"
-
-  # Get video for debugging
-  CLOSE_RESULT=$(infsh app run agent-browser --function close --session $SESSION --input '{}')
-  echo "Debug video: $(echo $CLOSE_RESULT | jq -r '.video')"
-  exit 1
-fi
-
-infsh app run agent-browser --function close --session $SESSION --input '{}'
+agent-browser record stop
 ```
 
 ### Documentation Generation
 
-Record workflows for user documentation:
-
 ```bash
 #!/bin/bash
-# Record how-to video
+# Record workflow for documentation
 
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://app.example.com/settings",
-  "record_video": true,
-  "width": 1920,
-  "height": 1080
-}' | jq -r '.session_id')
+agent-browser record start ./docs/how-to-login.webm
 
-# Add pauses for clarity
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "wait", "wait_ms": 1000
-}'
+agent-browser open https://app.example.com/login
+agent-browser wait 1000  # Pause for visibility
 
-# Step 1: Click settings
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e5"
-}'
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "wait", "wait_ms": 500
-}'
+agent-browser snapshot -i
+agent-browser fill @e1 "demo@example.com"
+agent-browser wait 500
 
-# Step 2: Change setting
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e10"
-}'
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "wait", "wait_ms": 500
-}'
+agent-browser fill @e2 "password"
+agent-browser wait 500
 
-# Step 3: Save
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "click", "ref": "@e15"
-}'
-infsh app run agent-browser --function interact --session $SESSION --input '{
-  "action": "wait", "wait_ms": 1000
-}'
+agent-browser click @e3
+agent-browser wait --load networkidle
+agent-browser wait 1000  # Show result
 
-# Get the video
-RESULT=$(infsh app run agent-browser --function close --session $SESSION --input '{}')
-echo "Documentation video: $(echo $RESULT | jq -r '.video')"
+agent-browser record stop
 ```
 
-### Test Evidence for CI/CD
+### CI/CD Test Evidence
 
 ```bash
 #!/bin/bash
-# Record E2E test for CI artifacts
+# Record E2E test runs for CI artifacts
 
 TEST_NAME="${1:-e2e-test}"
+RECORDING_DIR="./test-recordings"
+mkdir -p "$RECORDING_DIR"
 
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "'"$TEST_URL"'",
-  "record_video": true
-}' | jq -r '.session_id')
+agent-browser record start "$RECORDING_DIR/$TEST_NAME-$(date +%s).webm"
 
-# Run test steps
-run_test_steps $SESSION
-TEST_RESULT=$?
-
-# Always get video
-CLOSE_RESULT=$(infsh app run agent-browser --function close --session $SESSION --input '{}')
-VIDEO=$(echo $CLOSE_RESULT | jq -r '.video')
-
-# Save to artifacts
-if [ -n "$CI_ARTIFACTS_DIR" ]; then
-  cp "$VIDEO" "$CI_ARTIFACTS_DIR/${TEST_NAME}.webm"
+# Run test
+if run_e2e_test; then
+    echo "Test passed"
+else
+    echo "Test failed - recording saved"
 fi
 
-exit $TEST_RESULT
-```
-
-### Monitoring and Auditing
-
-```bash
-#!/bin/bash
-# Record automated task for audit trail
-
-TASK_ID=$(date +%Y%m%d-%H%M%S)
-
-SESSION=$(infsh app run agent-browser --function open --session new --input '{
-  "url": "https://admin.example.com",
-  "record_video": true
-}' | jq -r '.session_id')
-
-# Perform admin task
-# ... automation steps ...
-
-# Save recording
-RESULT=$(infsh app run agent-browser --function close --session $SESSION --input '{}')
-VIDEO=$(echo $RESULT | jq -r '.video')
-
-# Archive for audit
-mv "$VIDEO" "/audit/recordings/${TASK_ID}.webm"
-echo "Audit recording saved: ${TASK_ID}.webm"
+agent-browser record stop
 ```
 
 ## Best Practices
 
-### 1. Add Strategic Pauses
-
-Pauses make videos easier to follow:
+### 1. Add Pauses for Clarity
 
 ```bash
-# After significant actions, add a pause
-'{"action": "click", "ref": "@e1"}'
-'{"action": "wait", "wait_ms": 500}'  # Let viewer see result
+# Slow down for human viewing
+agent-browser click @e1
+agent-browser wait 500  # Let viewer see result
 ```
 
-### 2. Use Larger Viewport for Documentation
+### 2. Use Descriptive Filenames
 
 ```bash
-'{"url": "...", "record_video": true, "width": 1920, "height": 1080}'
+# Include context in filename
+agent-browser record start ./recordings/login-flow-2024-01-15.webm
+agent-browser record start ./recordings/checkout-test-run-42.webm
 ```
 
-### 3. Handle Errors Gracefully
-
-Always retrieve video even on failure:
+### 3. Handle Recording in Error Cases
 
 ```bash
+#!/bin/bash
+set -e
+
 cleanup() {
-  if [ -n "$SESSION" ]; then
-    infsh app run agent-browser --function close --session $SESSION --input '{}' 2>/dev/null
-  fi
+    agent-browser record stop 2>/dev/null || true
+    agent-browser close 2>/dev/null || true
 }
 trap cleanup EXIT
+
+agent-browser record start ./automation.webm
+# ... automation steps ...
 ```
 
 ### 4. Combine with Screenshots
 
-Use screenshots for key frames, video for flow:
-
 ```bash
-# Record overall flow
-'{"record_video": true}'
+# Record video AND capture key frames
+agent-browser record start ./flow.webm
 
-# Capture key states
-infsh app run agent-browser --function screenshot --session $SESSION --input '{
-  "full_page": true
-}'
-```
+agent-browser open https://example.com
+agent-browser screenshot ./screenshots/step1-homepage.png
 
-### 5. Don't Record Sensitive Sessions
+agent-browser click @e1
+agent-browser screenshot ./screenshots/step2-after-click.png
 
-Avoid recording when handling credentials:
-
-```bash
-if [ "$CONTAINS_SENSITIVE_DATA" = "true" ]; then
-  RECORD="false"
-else
-  RECORD="true"
-fi
-
-'{"url": "...", "record_video": '$RECORD'}'
+agent-browser record stop
 ```
 
 ## Output Format
 
-- **Format**: WebM (VP8/VP9 codec)
-- **Compatibility**: All modern browsers and video players
-- **Quality**: Matches viewport size
-- **Compression**: Efficient for screen content
+- Default format: WebM (VP8/VP9 codec)
+- Compatible with all modern browsers and video players
+- Compressed but high quality
 
 ## Limitations
 
-1. **Session-level only** - Can't start/stop mid-session
-2. **Memory usage** - Long sessions consume more memory
-3. **File size** - Complex pages with animations produce larger files
-4. **No audio** - Browser audio is not captured
-5. **Returned on close** - Video only available after session ends
+- Recording adds slight overhead to automation
+- Large recordings can consume significant disk space
+- Some headless environments may have codec limitations

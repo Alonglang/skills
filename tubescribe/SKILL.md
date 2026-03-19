@@ -1,6 +1,6 @@
 ---
 name: TubeScribe
-description: "YouTube视频总结器，带说话人检测、格式化文档和音频输出。当用户发送YouTube URL或要求总结/转录YouTube视频时使用。"
+description: "YouTube视频总结器，带说话人检测、格式化文档和音频输出。当用户发送YouTube URL或要求总结、转录YouTube视频时，必须触发此技能。"
 ---
 
 # TubeScribe 🎬
