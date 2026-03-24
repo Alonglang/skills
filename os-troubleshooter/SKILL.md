@@ -667,12 +667,161 @@ tcpdump -i <interface> -w capture.pcap
 
 ---
 
+## 多OS适配层
+
+### 命令映射表
+
+不同Linux发行版和macOS的常用命令差异对照：
+
+| 功能 | openEuler/CentOS/RHEL | Ubuntu/Debian | SUSE/openSUSE | macOS |
+|------|----------------------|---------------|---------------|-------|
+| 包管理-安装 | `yum install` / `dnf install` | `apt install` | `zypper install` | `brew install` |
+| 包管理-搜索 | `yum search` / `dnf search` | `apt search` | `zypper search` | `brew search` |
+| 包验证 | `rpm -Va` | `debsums` | `rpm -Va` | N/A |
+| 系统日志 | `/var/log/messages` | `/var/log/syslog` | `/var/log/messages` | `/var/log/system.log` |
+| 日志服务 | `journalctl` | `journalctl` | `journalctl` | `log show` |
+| 服务管理 | `systemctl` | `systemctl` | `systemctl` | `launchctl` |
+| 防火墙 | `firewalld` / `iptables` | `ufw` / `iptables` | `firewalld` | `pfctl` |
+| 内核调试信息 | `yum install kernel-debuginfo` | `apt install linux-image-$(uname -r)-dbgsym` | `zypper install kernel-default-debuginfo` | N/A |
+| 崩溃转储 | `kdump` | `linux-crashdump` | `kdump` | `DiagnosticReports` |
+| 网络配置 | `nmcli` / `ip` | `nmcli` / `ip` / `netplan` | `wicked` / `nmcli` | `networksetup` / `ifconfig` |
+| 进程管理 | `systemctl` | `systemctl` | `systemctl` | `launchctl` |
+
+### 发行版检测
+
+```bash
+# 自动检测当前发行版
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    DISTRO="$ID"
+    VERSION="$VERSION_ID"
+elif [ -f /etc/redhat-release ]; then
+    DISTRO="centos"
+elif [ "$(uname)" = "Darwin" ]; then
+    DISTRO="macos"
+else
+    DISTRO="unknown"
+fi
+```
+
+### 适配注意事项
+
+| 差异点 | 说明 |
+|--------|------|
+| 日志位置 | CentOS用messages，Ubuntu用syslog，均可用journalctl |
+| 包格式 | RPM系 vs DEB系，影响debuginfo安装方式 |
+| 内核命名 | CentOS: vmlinuz-版本, Ubuntu: vmlinuz-版本-generic |
+| 默认shell | 大多数Linux用bash，部分容器镜像用sh/ash |
+| cgroup版本 | 新版本发行版默认cgroup v2，老版本用v1 |
+| SELinux vs AppArmor | CentOS/openEuler用SELinux，Ubuntu用AppArmor |
+
+---
+
+## 迭代诊断模式
+
+对于复杂问题，采用多轮迭代诊断而非单次线性流程：
+
+### 迭代流程
+
+```
+第一轮：快速扫描
+├── 运行60秒快速检查（红灯信号法）
+├── 初步分类问题类型
+├── 向用户确认观察结果
+└── 输出：初步诊断方向
+
+第二轮：定向收集
+├── 根据初步分类选择收集策略
+├── 执行针对性数据收集脚本
+├── 分析收集到的数据
+└── 输出：数据分析结果 + 假设列表
+
+第三轮：深度分析
+├── 根据假设进行深入分析
+├── 验证或排除每个假设
+├── 定位根因
+└── 输出：根因分析报告
+
+第四轮：方案验证
+├── 制定修复方案
+├── 执行修复（经用户确认）
+├── 验证修复效果
+├── 是否需要继续？
+│   ├── 是 → 回到第一轮
+│   └── 否 → 生成最终报告
+└── 输出：修复验证报告
+```
+
+### 迭代退出条件
+
+| 条件 | 动作 |
+|------|------|
+| 根因已定位且修复验证通过 | 退出，生成最终报告 |
+| 超过3轮迭代未定位根因 | 建议收集更多数据或寻求外部支持 |
+| 用户选择停止 | 输出当前进展报告 |
+| 问题自行恢复 | 记录现象，建议监控 |
+
+### 每轮必做检查
+
+每轮迭代开始时，必须确认：
+1. 上一轮的结论是否仍然有效
+2. 是否有新的现象出现
+3. 系统状态是否发生变化
+4. 是否需要调整诊断方向
+
+---
+
+## 严重程度评估
+
+### 评估矩阵
+
+| 维度 | 高（P1） | 中（P2） | 低（P3） |
+|------|----------|----------|----------|
+| **影响范围** | 整个系统/服务不可用 | 单个服务/组件受影响 | 非关键功能异常 |
+| **数据影响** | 数据丢失或损坏 | 数据暂时不可访问 | 无数据影响 |
+| **复发频率** | 持续发生或高频复发 | 偶发（每天/每周） | 罕见（每月以上） |
+| **恢复能力** | 需要人工干预修复 | 可通过重启恢复 | 自动恢复 |
+| **业务影响** | 核心业务中断 | 辅助业务受影响 | 用户基本无感知 |
+
+### 综合判定规则
+
+```
+如果任一维度为"高" → 综合严重程度 = 高（P1）
+如果两个及以上维度为"中" → 综合严重程度 = 中（P2）
+其余情况 → 综合严重程度 = 低（P3）
+```
+
+### 响应要求
+
+| 严重程度 | 响应要求 |
+|----------|----------|
+| **高（P1）** | 立即响应，优先提供规避方案，同步进行根因分析 |
+| **中（P2）** | 尽快响应，按标准四阶段法分析 |
+| **低（P3）** | 计划性处理，记录问题，安排修复 |
+
+---
+
 ## 参考资料
 
 当需要更详细信息时，阅读以下参考文档：
 
+### 核心分析参考
 - `references/kernel-panic-types.md` - 内核panic类型详细说明
 - `references/segfault-types.md` - 段错误类型详细说明
 - `references/perf-methodology.md` - USE方法详细指南
 - `references/deadlock-analysis.md` - 死锁分析详细指南
 - `references/command-reference.md` - 常用命令速查
+
+### 扩展场景参考
+- `references/network-troubleshooting.md` - 网络故障诊断指南
+- `references/boot-troubleshooting.md` - 启动故障诊断指南
+- `references/container-troubleshooting.md` - 容器与虚拟化故障诊断指南
+- `references/security-incident.md` - 安全事件响应指南
+- `references/log-patterns.md` - 日志错误模式匹配库
+- `references/software-packages.md` - 软件包责任领域表
+
+### 辅助工具
+- `scripts/diagnose.sh` - 主入口诊断脚本（支持 auto/kernel/userspace/perf/hang/network/storage 模式）
+- `scripts/quick_diagnosis.sh` - 智能问题诊断脚本（自动检测问题类型）
+- `scripts/check_tools.sh` - 分析工具检查脚本
+- `scripts/collect_info.sh` - 系统信息收集脚本
