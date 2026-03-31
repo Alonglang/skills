@@ -1,6 +1,6 @@
 ---
 name: opencode-ops
-description: Use this skill for anything about opencode or oh-my-opencode (oh-my-openagent / OmO) — including installing opencode, configuring opencode.json or tui.json, setting up LLM providers in opencode, using ultrawork or ulw, understanding Sisyphus/Hephaestus/Oracle/Prometheus/Atlas agents, configuring oh-my-openagent.json agents/categories, opencode MCP servers or plugins, opencode commands (/init-deep /connect /undo /share /start-work), and troubleshooting opencode or oh-my-opencode issues. 当用户询问 opencode 安装配置、oh-my-opencode 安装、ultrawork 用法、OmO Agent 配置、opencode Provider 接入、oh-my-openagent.json 写法、opencode 排错时，必须使用此技能。只要提到 opencode、oh-my-opencode、oh-my-openagent、OmO、ultrawork、ulw、Sisyphus、Hephaestus，立即触发。
+description: opencode 和 oh-my-opencode（oh-my-openagent / OmO）运维参考技能。遇到以下话题时必须先调用此技能：安装/升级 opencode、opencode.json 或 tui.json 配置、opencode 接入 LLM Provider（Anthropic/OpenAI/Gemini/Copilot/Kimi/GLM/Bedrock）、ultrawork 或 ulw 命令、oh-my-opencode 安装（bunx flags）、oh-my-openagent.json 的 agents 或 categories 配置、Sisyphus/Hephaestus/Oracle/Prometheus/Atlas 等 Agent 介绍或使用、opencode MCP 服务器和插件（Hooks/Events）、opencode 命令（/init-deep /connect /undo /redo /share /start-work）、opencode 或 OmO 故障排查（doctor 报错/legacy警告）。只要用户消息含 opencode、oh-my-opencode、oh-my-openagent、OmO、ultrawork、ulw、Sisyphus、Hephaestus 任一词，必须立即触发此技能。
 ---
 
 # OpenCode & Oh-My-OpenAgent 运维技能
