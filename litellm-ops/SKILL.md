@@ -47,7 +47,8 @@ LiteLLM 是一个统一的 AI Gateway / LLM Proxy，用 **OpenAI 兼容格式** 
 | 🔀 路由/回退/重试 | [routing.md](references/routing.md) | 7种路由策略 / 3种回退类型 / 冷却时间 |
 | 📊 监控/日志/成本 | [observability.md](references/observability.md) | Langfuse / OTEL / DataDog / 成本追踪 |
 | 🛡️ 护栏/安全策略 | [guardrails.md](references/guardrails.md) | 35+ 护栏 / PII / 内容过滤 |
-| 🔧 故障排查 | [troubleshoot.md](references/troubleshoot.md) | DB不同步 / Redis / SSL / 死锁 |
+| 🔧 故障排查 | [troubleshoot.md](references/troubleshoot.md) | DB不同步 / Redis / SSL / 死锁 / 国产模型工具调用 |
+| 🤖 国产模型工具调用修复 | [troubleshoot.md#国产模型--特殊-provider-工具调用问题](references/troubleshoot.md) | GLM XML泄漏 / finish_reason修复 / Agent停止问题 |
 
 ### API 端点参考（733 个端点，按功能分 5 卷）
 

@@ -365,6 +365,278 @@ docker logs litellm 2>&1 | grep -i "error\|exception\|traceback"
 
 ---
 
+## 国产模型 / 特殊 Provider 工具调用问题
+
+> 以下经验来自实际生产排查（GLM-4.7 通过 NVIDIA NIM → LiteLLM → opencode）
+
+### 14. Agent 只答一轮就停止（问一句答一句）
+
+**症状：** opencode / 任何 Agent 框架每次只执行一步就停，不会持续调用工具
+
+**根本原因链（按优先级排查）：**
+
+1. **`max_tokens` 未设置** → 模型只生成 32 token（部分模型默认值极小）→ 工具调用 JSON 被截断 → Agent 认为对话结束
+2. 流式模式 `finish_reason=stop`（应为 `tool_calls`）→ Agent 不触发工具执行
+3. 工具调用 JSON 不完整（被 token 截断）→ 解析失败 → Agent 停止
+
+**快速诊断：**
+
+```bash
+# 直接测试模型，不带 max_tokens
+curl http://localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $MASTER_KEY" \
+  -d '{"model":"your-model","messages":[{"role":"user","content":"hi"}]}' \
+  | python3 -c "import json,sys; r=json.load(sys.stdin); print(r['choices'][0]['finish_reason'], r['usage'])"
+# 如果 finish_reason=length，说明 max_tokens 太小！
+```
+
+**解决方案：**
+
+```yaml
+# config.yaml 中所有模型都加 max_tokens
+model_list:
+  - model_name: your-model
+    litellm_params:
+      model: openai/your-model
+      api_base: https://your-provider/v1
+      api_key: os.environ/YOUR_API_KEY
+      max_tokens: 8192   # ← 必须设置！默认值可能只有 32~256
+```
+
+---
+
+### 15. GLM-4.7 并行工具调用：部分工具以 XML 格式泄漏在 content 中
+
+**症状：** 发出 3 个并行工具调用请求，只收到 2 个 `tool_calls`，第 3 个以如下格式出现在 `content` 字段：
+
+```
+<tool_call>function_name<arg_key>key</arg_key><arg_value>value</arg_value></tool_call>
+```
+
+**根本原因：** GLM-4.7 模型本身的 bug，**与 LiteLLM 无关**（直接调 NVIDIA NIM API 也有相同问题）。并行工具调用时，模型随机将部分工具以 XML 格式输出在 content 里而非标准 JSON tool_calls。
+
+**修复方案：** 通过 LiteLLM CustomGuardrail 插件在代理层自动修复。
+
+**完整插件代码 `xml_tool_fix.py`（放在 LiteLLM 工作目录）：**
+
+```python
+import re, uuid, json, copy
+from typing import AsyncGenerator
+from litellm.integrations.custom_guardrail import CustomGuardrail
+
+class XMLToolCallFixer(CustomGuardrail):
+    XML_PATTERN = re.compile(
+        r'<tool_call>\s*(\w+)\s*((?:<arg_key>.*?</arg_key>\s*<arg_value>.*?</arg_value>\s*)*)</tool_call>',
+        re.DOTALL
+    )
+    ARG_PATTERN = re.compile(
+        r'<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>',
+        re.DOTALL
+    )
+
+    def _extract_xml_tools(self, content: str):
+        xml_tools = []
+        for m in self.XML_PATTERN.finditer(content):
+            func_name = m.group(1).strip()
+            args = {k.strip(): v.strip() for k, v in self.ARG_PATTERN.findall(m.group(2))}
+            xml_tools.append({
+                'id': f'call_{uuid.uuid4().hex[:8]}',
+                'type': 'function',
+                'function': {'name': func_name, 'arguments': json.dumps(args)}
+            })
+        clean = self.XML_PATTERN.sub('', content).strip() or None
+        return xml_tools, clean
+
+    # 非流式修复
+    async def async_post_call_success_hook(self, data, user_api_key_dict, response):
+        try:
+            choice = response.choices[0]
+            msg = choice.message
+            if not msg.content:
+                return response
+            xml_tools, clean = self._extract_xml_tools(msg.content)
+            if not xml_tools:
+                return response
+            msg.content = clean
+            existing = list(msg.tool_calls or [])
+            from litellm.types.utils import ChatCompletionMessageToolCall, Function
+            for xt in xml_tools:
+                existing.append(ChatCompletionMessageToolCall(
+                    id=xt['id'], type='function',
+                    function=Function(name=xt['function']['name'], arguments=xt['function']['arguments'])
+                ))
+            msg.tool_calls = existing if existing else None
+            if choice.finish_reason in (None, 'stop') and msg.tool_calls:
+                choice.finish_reason = 'tool_calls'
+            return response
+        except Exception as e:
+            print(f'[XMLToolCallFixer] non-stream error: {e}')
+            return response
+
+    # 流式修复
+    async def async_post_call_streaming_iterator_hook(
+        self, user_api_key_dict, response, request_data  # 注意：是 request_data 不是 request_body
+    ) -> AsyncGenerator:
+        from litellm.types.utils import Delta, ChatCompletionDeltaToolCall, Function
+
+        chunks = []
+        async for chunk in response:
+            chunks.append(chunk)
+
+        full_content = ''
+        max_tc_index = -1
+        for chunk in chunks:
+            try:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    full_content += delta.content
+                for tc in (delta.tool_calls or []):
+                    if hasattr(tc, 'index') and tc.index is not None and tc.index > max_tc_index:
+                        max_tc_index = tc.index
+            except Exception:
+                pass
+
+        xml_tools, clean_content = self._extract_xml_tools(full_content)
+        has_tools = max_tc_index >= 0 or bool(xml_tools)
+
+        for i, chunk in enumerate(chunks):
+            try:
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if delta.content and xml_tools:
+                    delta.content = None
+                if i == len(chunks) - 1 and has_tools:
+                    if choice.finish_reason in ('stop', None):
+                        choice.finish_reason = 'tool_calls'
+            except Exception:
+                pass
+            yield chunk
+
+        # 注入 XML 工具调用为标准 streaming chunks
+        for xt_idx, xt in enumerate(xml_tools):
+            tc_index = max_tc_index + 1 + xt_idx
+            try:
+                name_chunk = copy.deepcopy(chunks[-1])
+                name_chunk.choices[0].finish_reason = None
+                name_chunk.choices[0].delta = Delta(
+                    role=None, content=None,
+                    tool_calls=[ChatCompletionDeltaToolCall(
+                        index=tc_index, id=xt['id'], type='function',
+                        function=Function(name=xt['function']['name'], arguments='')
+                    )]
+                )
+                yield name_chunk
+
+                args_chunk = copy.deepcopy(chunks[-1])
+                args_chunk.choices[0].finish_reason = None
+                args_chunk.choices[0].delta = Delta(
+                    role=None, content=None,
+                    tool_calls=[ChatCompletionDeltaToolCall(
+                        index=tc_index, id=xt['id'], type='function',
+                        function=Function(name=None, arguments=xt['function']['arguments'])
+                    )]
+                )
+                yield args_chunk
+            except Exception as e:
+                print(f'[XMLToolCallFixer] inject error: {e}')
+
+        if xml_tools:
+            try:
+                fin_chunk = copy.deepcopy(chunks[-1])
+                fin_chunk.choices[0].delta = Delta(role=None, content=None)
+                fin_chunk.choices[0].finish_reason = 'tool_calls'
+                yield fin_chunk
+            except Exception as e:
+                print(f'[XMLToolCallFixer] finish chunk error: {e}')
+
+
+proxy_handler_instance = XMLToolCallFixer()
+```
+
+**注册方式（config.yaml）：**
+
+```yaml
+litellm_settings:
+  callbacks:
+    - xml_tool_fix.proxy_handler_instance
+```
+
+**Docker 部署注意事项：**
+- 将 `xml_tool_fix.py` 放在宿主机挂载目录（如 `/volume/litellm/`），bind mount 到容器 `/app/`
+- 修改插件后需重启容器（Python 模块不会热重载）
+- 发送文件到远端无法用 scp 时的替代方案：`python3 -c "import base64; print(base64.b64encode(open('file.py','rb').read()).decode())" | ssh host "base64 -d > /path/file.py"`
+
+---
+
+### 16. 流式模式 finish_reason=stop（工具调用后应为 tool_calls）
+
+**症状：** 流式响应中有 `tool_calls` delta，但最终 `finish_reason=stop`，Agent 不执行工具
+
+**根本原因：** 部分国产模型（如 GLM-4.7、部分 Qwen）流式模式下即使有工具调用，仍返回 `finish_reason=stop`
+
+**修复：** 已内置在上方第 15 条的 `xml_tool_fix.py` 插件中（`has_tools` 判断自动修正）
+
+---
+
+### 17. CustomLogger vs CustomGuardrail 修改响应的区别
+
+**关键认知：** 只有 `CustomGuardrail` 的 hook 返回值才会替换响应；`CustomLogger` 的 hook 返回值**被忽略**。
+
+| 扩展类 | hook | 能否修改响应 |
+|--------|------|------------|
+| `CustomLogger` | `async_log_success_event` | ❌ 返回值被忽略 |
+| `CustomLogger` | `async_post_call_success_hook` | ❌ 不走修改路径 |
+| `CustomGuardrail` | `async_post_call_success_hook` | ✅ 返回值替换响应 |
+| `CustomGuardrail` | `async_post_call_streaming_iterator_hook` | ✅ 接管整个 AsyncGenerator |
+
+**注册方式区别：**
+```yaml
+litellm_settings:
+  callbacks:                        # ← CustomGuardrail 用 callbacks
+    - xml_tool_fix.proxy_handler_instance
+
+  success_callback:                 # ← CustomLogger 用 success_callback
+    - my_logger.handler_instance
+```
+
+---
+
+### 18. 流式插件中使用自定义 Python 类导致序列化失败
+
+**症状：** `PydanticSerializationError: Unable to serialize unknown type: <class 'MyPlugin.MyHook.<locals>.MyDelta'>`
+
+**原因：** 在 `async_post_call_streaming_iterator_hook` 中创建了局部自定义类作为 delta 对象，Pydantic 无法序列化
+
+**解决方案：** 只使用 LiteLLM 官方 Pydantic 类型：
+
+```python
+from litellm.types.utils import Delta, ChatCompletionDeltaToolCall, Function
+# 不要创建自定义的 TCDelta、CustomDelta 等类
+```
+
+---
+
+### 19. Provider 从 nvidia_nim 改为 openai + api_base 的注意事项
+
+**场景：** NVIDIA NIM 托管的模型（如 GLM-4.7）在 LiteLLM 中建议用 `openai` provider 而非 `nvidia_nim`，以获得更好的工具调用兼容性。
+
+```yaml
+# ❌ 避免（工具调用时 LiteLLM 会注入 nvidia_nim 特有的转换逻辑）
+- model_name: glm47
+  litellm_params:
+    model: nvidia_nim/z-ai/glm4.7
+
+# ✅ 推荐（透传标准 OpenAI 格式）
+- model_name: glm47
+  litellm_params:
+    model: openai/z-ai/glm4.7
+    api_base: https://integrate.api.nvidia.com/v1
+    api_key: os.environ/GLM47_API_KEY
+    max_tokens: 8192
+```
+
+---
+
 ## 升级故障恢复
 
 ### 升级后服务异常
