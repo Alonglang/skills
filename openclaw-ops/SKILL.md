@@ -1,8 +1,8 @@
 ---
 name: openclaw-ops
-description: 管理 OpenClaw 配置——包括通道、代理、节点、安全、自动化、技能、Web UI 和 TUI 设置。当需要修改OpenClaw配置、管理技能、调整安全设置、配置自动化任务、设置Web UI/TUI时必须触发此技能。
-version: 2.1.0
-lastUpdated: 2026-03-19
+description: 管理 OpenClaw 配置与运维——涵盖渠道（WhatsApp/Telegram/Discord/Slack/Teams/QQ Bot）、代理、节点、安全审计、自动化（Cron/钩子）、技能生态、Web UI、TUI、ACP 工作区绑定、记忆系统、模型提供商（Anthropic/xAI/Grok/Vercel AI/Kilo Gateway/MiniMax/Gemini）、OpenAI API 兼容层、图片生成。当用户需要配置 OpenClaw 任何功能、排查 Gateway/渠道故障、管理技能/插件/沙箱/节点/密钥、处理异步审批、更新版本、绑定 ACP 工作区、配置文件上传、配置 Qwen/xAI/MiniMax 提供商、或询问 openclaw.json 任何配置项时必须触发此技能。
+version: 2026.3.28
+lastUpdated: 2026-03-31
 ---
 
 # OpenClaw 配置与运维手册
@@ -25,6 +25,10 @@ lastUpdated: 2026-03-19
 - **ClawHub 技能中心**: https://clawhub.com
 - **节点系统**: https://docs.openclaw.ai/zh-CN/nodes
 - **CLI 参考**: https://docs.openclaw.ai/zh-CN/cli/index
+- **Microsoft Teams 渠道**: https://docs.openclaw.ai/channels/msteams
+- **ACP 工作区**: https://docs.openclaw.ai/zh-CN/acp
+- **更新日志**: https://github.com/openclaw/openclaw/blob/main/CHANGELOG.md
+- **What's New (2026-03)**: https://tenten.co/openclaw/en/docs/whats-new/march-2026
 
 ---
 
@@ -46,6 +50,10 @@ lastUpdated: 2026-03-19
 | `openclaw secrets` | 密钥管理和审计 | 管理密钥引用时 |
 | `openclaw nodes status` | 查看已配对节点状态 | 检查节点连接时 |
 | `openclaw memory status` | 查看记忆索引状态 | 检查记忆系统时 |
+| `openclaw update` | 自更新到最新版本 | 检查/应用 OpenClaw 更新时 |
+| `openclaw config schema` | 打印 openclaw.json 的 JSON Schema | 验证配置结构时 |
+| `openclaw acp status` | 查看 ACP 工作区绑定状态 | 管理 ACP 会话绑定时 |
+| `openclaw skills info <name>` | 查看技能详细信息、需求和 API 密钥 | 技能加载失败或需要配置时 |
 
 **分享输出优先**: 使用 `openclaw status --all`（隐藏令牌）。如需粘贴 `openclaw status`，先设置 `OPENCLAW_SHOW_SECRETS=0`。
 
@@ -435,6 +443,8 @@ grep -i "signal.*rate" ~/.openclaw/logs/gateway.err.log | tail -5
 ### QQ Bot: 安装与配置
 
 **QQ Bot** 是由社区维护的第三方渠道插件，提供完整的 QQ 机器人支持。
+- **推荐版本**：`@tencent-connect/openclaw-qqbot` v1.6.6（最新稳定版）
+- **社区分支**：`@sliverp/qqbot` v1.6.1
 
 #### 第一步：创建 QQ 机器人
 
@@ -445,7 +455,10 @@ grep -i "signal.*rate" ~/.openclaw/logs/gateway.err.log | tail -5
 #### 第二步：安装插件
 
 ```bash
-# 通过 OpenClaw CLI 安装（推荐）
+# 官方版（推荐，v1.6.6，功能最全）
+openclaw plugins install @tencent-connect/openclaw-qqbot@latest
+
+# 社区版（v1.6.1）
 openclaw plugins install @sliverp/qqbot@latest
 
 # 或从源码安装
@@ -557,7 +570,7 @@ AI 在回复中使用特殊标签发送富媒体内容：
 |------|----------|------|
 | 图片 | `<qqimg>/path/to/image.png</qqimg>` | 本地文件或 URL，支持 jpg/png/gif/webp |
 | 语音 | `<qqvoice>/path/to/audio.mp3</qqvoice>` | 支持 mp3/wav/silk/ogg |
-| 文件 | `<qqfile>/path/to/file.pdf</qqfile>` | 任意格式，最大 20MB |
+| 文件 | `<qqfile>/path/to/file.pdf</qqfile>` | 任意格式，最大 100MB（v1.6.6 分块上传） |
 | 视频 | `<qqvideo>/path/to/video.mp4</qqvideo>` | 本地文件或 URL |
 
 **示例：**
@@ -568,6 +581,10 @@ AI 在回复中使用特殊标签发送富媒体内容：
 ```
 
 **标签容错**：插件自动纠正 30+ 种变体写法，比如 `<qq_img>`、`＜qqimg＞` 都能识别。
+
+**大文件分块上传（v1.6.6）**：超过阈值的文件自动分块并行上传，支持断点续传和进度回调。
+
+**引用消息解析（v1.6.x）**：QQ 的引用消息（`REFIDX_*`）会被透明解析为完整原文+多媒体摘要，注入 AI 输入上下文，使回复更智能。
 
 ### QQ Bot: 语音能力配置
 
@@ -598,6 +615,9 @@ TTS（文字转语音）同样两级优先级：
 
 ```bash
 # 通过 OpenClaw 升级（推荐）
+openclaw plugins upgrade @tencent-connect/openclaw-qqbot@latest
+
+# 社区版升级
 openclaw plugins upgrade @sliverp/qqbot@latest
 
 # 通过 npx 升级
@@ -613,6 +633,41 @@ openclaw plugins install .
 openclaw gateway restart
 ```
 
+**聊天内热升级（v1.6.x）**：在 QQ 私聊中直接发送命令即可升级，无需 SSH/服务器访问：
+
+```
+/bot-upgrade              # 升级到最新版
+/bot-upgrade --latest     # 强制拉取最新
+/bot-upgrade --version 1.6.6  # 指定版本
+/bot-upgrade ?            # 查看帮助
+```
+
+升级前插件会自动备份 AppID/AppSecret 凭证，升级失败可自动恢复。
+
+### QQ Bot: 存储管理（v1.6.6）
+
+```bash
+# 在 QQ 私聊中发送
+/bot-clear-storage        # 清理插件缓存和下载文件
+```
+
+清理按账户和对话隔离，不影响其他机器人或会话数据。
+
+### QQ Bot: 频道 API 代理（v1.6.x）
+
+AI 可通过 `qqbot_channel_api` 工具直接调用 QQ 开放平台频道 HTTP 端点：
+
+- 子频道管理
+- 成员查询
+- 论坛帖子操作
+- 公告和日程管理
+
+### QQ Bot: 安全增强（v1.6.6）
+
+- **SSRF 防护**（`ssrf-guard`）：所有远程文件下载会检查 DNS 和 IP，阻止内网/保留地址的恶意 URL
+- **作用域下载路径**：附件按账户和对话隔离存储，防止多账户冲突和意外覆盖
+- **HTTP/SOCKS5 代理支持**：所有上传/下载操作支持代理配置
+
 ### QQ Bot: 故障排除
 
 ```bash
@@ -627,14 +682,89 @@ openclaw logs --follow
 
 # 检查配置
 openclaw config get channels.qqbot
+
+# 清理缓存排除存储问题
+# 在 QQ 私聊中发送: /bot-clear-storage
 ```
 
 **常见问题：**
 - **机器人回复"该机器人去火星了"**：检查 Gateway 是否运行，以及 AppID/AppSecret 是否配置正确
 - **Markdown 不显示**：需要在 QQ 开放平台申请 Markdown 权限
 - **语音无法识别**：检查 STT 配置是否正确，provider 是否存在且有 API 密钥
+- **大文件上传失败**：检查网络连接和代理配置，分块上传会自动重试；如仍失败检查日志中的超时错误
+- **引用消息丢失上下文**：确保插件版本 ≥ v1.6.x，旧版本不支持 `REFIDX_*` 解析
+- **下载被 SSRF 防护拦截**：正常行为——插件会阻止指向内网地址的 URL，检查来源是否可信
 
-### Cron 作业故障
+### Microsoft Teams: 安装与配置
+
+**Microsoft Teams** 从 OpenClaw v2026.3.x 起作为独立插件提供，支持流式回复、Adaptive Card 审批和原生 Teams 体验。
+
+#### 第一步：注册 Azure Bot
+
+1. 前往 [Azure Portal](https://portal.azure.com/)，创建 **Azure Bot 资源**
+2. 记录 `App ID`、`App Password`（Client Secret）和 `Tenant ID`
+3. 在 Bot 配置中设置 Messaging Endpoint（公开 HTTPS URL，默认端口 3978）
+4. 在 Teams 中上传 App Manifest 包（含 Bot 配置和 RSC 权限）
+
+#### 第二步：安装插件
+
+```bash
+openclaw plugins install @openclaw/msteams
+```
+
+#### 第三步：配置
+
+```json5
+{
+  "channels": {
+    "msteams": {
+      "enabled": true,
+      "appId": "${MSTEAMS_APP_ID}",
+      "appPassword": "${MSTEAMS_APP_PASSWORD}",
+      "tenantId": "${MSTEAMS_TENANT_ID}",
+      "webhook": {
+        "port": 3978,
+        "path": "/api/messages"
+      },
+      "dmPolicy": "pairing",           // 私聊：未知发送者需配对
+      "allowFrom": ["user@org.com"],   // 仅允许指定用户（使用 Azure AD Object ID 更安全）
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": ["user@org.com"],
+      "configWrites": false
+    }
+  }
+}
+```
+
+**安全说明：**
+- 插件通过 JWT 验证来自 Microsoft 的请求签名，确保消息真实性
+- 建议使用 Azure AD Object ID（而非 UPN/显示名，因为这些可变）进行访问控制
+- 使用最小权限原则注册 Azure App
+
+#### 故障排除
+
+```bash
+# 检查插件状态
+openclaw plugins list
+
+# 检查渠道状态
+openclaw channels status --probe
+
+# 查看实时日志
+openclaw logs --follow
+
+# 检查配置
+openclaw config get channels.msteams
+```
+
+**常见问题：**
+- **消息未收到**：检查 Messaging Endpoint 是否公开可达（HTTPS，非 localhost）
+- **签名验证失败**：确认 `appId` 和 `appPassword` 与 Azure Portal 一致
+- **配对未完成**：在 `dmPolicy: "pairing"` 模式下，使用 `openclaw pairing list` 查看待处理请求
+
+---
+
+
 
 ```bash
 # 1. 所有作业概览
@@ -679,6 +809,54 @@ sqlite3 ~/.openclaw/memory/main.sqlite "SELECT path, size FROM files;"
 sqlite3 ~/.openclaw/memory/main.sqlite "SELECT COUNT(*) FROM chunks;"
 sqlite3 ~/.openclaw/memory/main.sqlite "SELECT substr(text, 1, 200) FROM chunks_fts WHERE chunks_fts MATCH 'KEYWORD' LIMIT 5;"
 ```
+
+---
+
+## ACP 工作区绑定
+
+**ACP（Agent Control Plane）** 允许将正在进行的对话绑定为 ACP 工作区，无需创建新线程——直接在 Telegram、Discord、iMessage 等渠道的实时聊天中启用持久工作区。
+
+### 基本命令
+
+```bash
+# 查看 ACP 状态
+openclaw acp status
+
+# 在当前聊天中绑定 Codex 工作区（v2026.3.28 新增：支持 Discord、BlueBubbles、iMessage）
+openclaw acp spawn codex --bind here
+
+# 列出所有 ACP 工作区
+openclaw acp list
+```
+
+### 支持渠道（v2026.3.28 更新）
+
+| 渠道 | `--bind here` 支持 | 说明 |
+|------|-------------------|------|
+| Telegram | ✅ | 将当前 Telegram 对话变为工作区 |
+| Discord | ✅ **新增** | 在 Discord 频道/私信中直接绑定 |
+| iMessage / BlueBubbles | ✅ **新增** | 在 iMessage 对话中启用 ACP |
+
+### 配置示例
+
+在 `openclaw.json` 中配置 ACP 绑定：
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "acp",
+      "match": { "peer": { "id": "your_channel_or_thread_id" } }
+      // 其他 ACP 选项...
+    }
+  ]
+}
+```
+
+**使用场景：**
+- 将 Telegram/Discord/iMessage 对话转为持久 AI 工作区
+- 在现有聊天上下文中执行代码、管理文件（无需新开线程）
+- 跨会话保持记忆和上下文连续性
 
 ---
 
@@ -795,6 +973,36 @@ clawhub sync --all  # 非交互模式
 - 版本管理和变更日志
 - 技能评级和评论
 - 星标和评论功能
+- **VirusTotal 自动扫描**：所有上传到 ClawHub 的技能自动进行恶意软件扫描
+
+### 技能安全（v2026.3+）
+
+```bash
+# 技能签名验证（Beta）—— 仅安装已签名的技能
+openclaw config set skills.requireSigned true
+
+# 查看技能安全状态
+clawhub info <skill-name>   # 显示 VirusTotal 扫描结果
+
+# 报告可疑技能
+clawhub report <skill-name>
+```
+
+**技能管理 UI（v2026.3+）**
+
+Control UI 现在显示技能状态标签：
+- **All** — 所有技能
+- **Ready** — 已安装且可用
+- **Needs Setup** — 缺少 API 密钥或依赖项
+- **Disabled** — 已禁用
+
+```bash
+# CLI 查看技能状态
+openclaw skills check -v
+
+# 查看单个技能详情（需求、API 密钥位置）
+openclaw skills info <skill-name>
+```
 
 ### 技能配置
 
@@ -1185,6 +1393,127 @@ openclaw config set agents.list[0].tools.exec.security allowlist
 
 ---
 
+## 自更新系统（v2026.2+）
+
+OpenClaw 支持通过 CLI 自更新，无需手动运行 npm：
+
+```bash
+# 检查并更新到最新版本
+openclaw update
+
+# 预览更新内容（不实际安装）
+openclaw update --dry-run
+
+# 配置更新通道
+openclaw config set update.channel stable  # stable | beta | dev
+```
+
+**注意：** v2026.2+ 强制失效超过 2 个月的旧配置键，更新后请运行 `openclaw doctor` 检查配置兼容性。
+
+---
+
+## 异步审批钩子（v2026.2+）
+
+插件和工具调用现在支持暂停等待人工审批的机制，通过 `requireApproval` 钩子实现。
+
+### 审批流程
+
+```bash
+# 查看待处理审批
+openclaw approvals list
+
+# 批准请求（通过 CLI）
+openclaw approvals approve <approval-id>
+
+# 拒绝请求
+openclaw approvals reject <approval-id>
+```
+
+**渠道中的审批**：
+- **Telegram/Discord**：系统发送带有 Approve/Reject 按钮的消息
+- **CLI**：使用 `/approve` 命令或 `openclaw approvals approve <id>`
+
+### 配置审批策略
+
+```json5
+{
+  "tools": {
+    "exec": {
+      "security": "ask",       // 执行前要求审批
+      "ask": "on-miss"         // 仅在不在允许列表时询问
+    }
+  }
+}
+```
+
+---
+
+## OpenAI API 兼容层（v2026.3+）
+
+OpenClaw Gateway 现在兼容 OpenAI API 格式，可与 LangChain、LlamaIndex、RAG 工具无缝集成：
+
+```bash
+# Gateway 默认在同一端口提供 OpenAI 兼容端点
+# 端点：http://127.0.0.1:18789/v1/
+
+# 测试兼容性
+curl http://127.0.0.1:18789/v1/models \
+  -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN"
+```
+
+**配置示例（在第三方工具中使用）：**
+```python
+import openai
+client = openai.OpenAI(
+    base_url="http://127.0.0.1:18789/v1",
+    api_key="your-openclaw-gateway-token"
+)
+```
+
+### OpenAI apply_patch 默认启用（v2026.3.28）
+
+对于 OpenAI 和 OpenAI Codex 模型，`apply_patch` 工具现在**默认启用**，支持更流畅的代码更新流程：
+
+```json5
+{
+  "models": {
+    "providers": {
+      "openai": {
+        "type": "openai",
+        "apiKey": "${OPENAI_API_KEY}",
+        // apply_patch 默认 true，无需手动启用
+      }
+    }
+  }
+}
+```
+
+---
+
+## 统一文件上传（v2026.2+）
+
+各渠道的文件发送操作现已统一为 `upload-file` 动作：
+
+```bash
+# Slack
+openclaw message send --channel slack \
+  --target "slack:C1234567" \
+  --file /path/to/file.pdf \
+  --comment "这是文件"
+
+# Microsoft Teams
+openclaw message send --channel msteams \
+  --target "msteams:user@org.com" \
+  --file /path/to/report.xlsx
+
+# Google Chat
+openclaw message send --channel googlechat \
+  --target "googlechat:space-id" \
+  --file /path/to/image.png
+```
+
+---
+
 ## 新命令概述
 
 ### 定时任务（Cron）
@@ -1225,12 +1554,25 @@ openclaw plugins list
 # 安装插件
 openclaw plugins install <path|npm-spec|tgz>
 
+# 升级插件
+openclaw plugins upgrade <id>@latest
+
 # 启用/禁用
 openclaw plugins enable <id>
 openclaw plugins disable <id>
 
 # 插件诊断
 openclaw plugins doctor
+```
+
+### 配置 Schema
+
+```bash
+# 打印 openclaw.json 的 JSON Schema（用于验证和 IDE 集成）
+openclaw config schema
+
+# 导出 Schema 到文件
+openclaw config schema > ~/.openclaw/openclaw.schema.json
 ```
 
 ### 沙箱管理
@@ -1269,8 +1611,27 @@ openclaw memory status
 # 重建索引
 openclaw memory index
 
-# 搜索记忆
+# 搜索记忆（支持多语言，v2026.3+）
 openclaw memory search "important note"
+```
+
+**记忆系统增强（v2026.3+）：**
+- **多语言原生支持**：记忆存储和检索支持多语言，跨语言检索更智能
+- **Memory v2 预览功能**（需在配置中启用）：
+  - 向量语义搜索（基于嵌入）
+  - 记忆分层：公开 / 私有 / 敏感
+  - PII 自动脱敏
+  - 跨代理共享记忆
+
+```json5
+{
+  // 启用 Memory v2 预览（实验性）
+  "memory": {
+    "version": 2,
+    "multilingual": true,
+    "piiRedaction": true
+  }
+}
 ```
 
 ### 浏览器管理
@@ -1721,6 +2082,177 @@ ls -la ~/.openclaw/workspace/memory/
 
 ---
 
+## 配置加固（v2026.2+ 新安装默认值）
+
+新安装的 OpenClaw 现在使用更安全的默认配置：
+
+| 设置 | 旧默认值 | 新默认值 |
+|------|---------|---------|
+| `gateway.bind` | `0.0.0.0` | `127.0.0.1`（仅本机） |
+| `gateway.auth.token` | 无 | 自动生成随机 Token |
+| `tools.exec.executor` | 直接执行 | Docker/Podman（沙箱） |
+| 敏感密钥日志 | 可能泄露 | 自动脱敏 |
+
+**敏感密钥自动脱敏：**
+
+命令输出和快照中的敏感字段（API 密钥、环境变量等）现在自动屏蔽：
+
+```bash
+# 查看脱敏后的状态（敏感信息被屏蔽）
+openclaw status --all
+
+# 明确显示密钥（谨慎使用）
+OPENCLAW_SHOW_SECRETS=1 openclaw status
+```
+
+**旧配置键迁移：**
+
+超过 2 个月的旧配置键不再自动迁移，而是直接报错：
+
+```bash
+# 检查并修复过期配置键
+openclaw doctor
+openclaw doctor --fix
+```
+
+---
+
+## 新模型提供商（v2026.2-3+）
+
+### Vercel AI Gateway
+
+```json5
+{
+  "models": {
+    "providers": {
+      "vercel-gateway": {
+        "type": "vercel",
+        "apiKey": "${VERCEL_GATEWAY_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### Kilo Gateway
+
+```json5
+{
+  "models": {
+    "providers": {
+      "kilo": {
+        "type": "kilo",
+        "apiKey": "${KILO_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### 捆绑 CLI 后端（Claude/Codex/Gemini CLI）
+
+v2026.2+ 将 Claude CLI、Codex CLI 和 Gemini CLI 作为内置提供商。**v2026.3.28 起**，配置中引用的 CLI 后端插件会**自动加载**，无需额外手动配置：
+
+```json5
+{
+  "models": {
+    "providers": {
+      "anthropic": {
+        "type": "claude-cli"   // 使用本地安装的 claude CLI，自动加载
+      },
+      "google": {
+        "type": "gemini-cli"   // 使用本地安装的 gemini CLI，自动加载
+      }
+    }
+  }
+}
+```
+
+```bash
+# 设置 Claude Opus 4.6 为默认模型
+openclaw config set agents.defaults.models '{"anthropic/claude-opus-4-6": {"alias": "opus"}}'
+
+# 使用 OAuth 认证 Gemini CLI
+openclaw models auth login --provider google-gemini-cli --set-default
+```
+
+### xAI / Grok 集成（v2026.3.28）
+
+```json5
+{
+  "models": {
+    "providers": {
+      "xai": {
+        "type": "xai",
+        "apiKey": "${XAI_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+**Grok 搜索插件**（v2026.3.28 新增）：
+
+```bash
+# 在 onboard/configure 流程中自动启用 Grok 搜索
+openclaw configure --section web
+
+# 手动启用 xAI 实时搜索
+openclaw config set models.providers.xai.tools.x_search true
+```
+
+**xAI Responses API** 取代旧版 Chat Completions API，支持更强大的工具调用。
+
+### Qwen 迁移（v2026.3.28 破坏性变更）
+
+**废弃** `qwen-portal-auth` OAuth 方式，**迁移至 Model Studio API Key**：
+
+```bash
+# 旧方式（已废弃，不再工作）
+# openclaw models auth login --provider qwen  ← 已移除
+
+# 新方式：使用 Model Studio API Key
+openclaw config set models.providers.qwen.apiKey "${QWEN_API_KEY}"
+```
+
+```json5
+{
+  "models": {
+    "providers": {
+      "qwen": {
+        "type": "qwen",
+        "apiKey": "${QWEN_API_KEY}"  // 从 Alibaba Model Studio 获取
+      }
+    }
+  }
+}
+```
+
+⚠️ 如果你之前使用 Qwen OAuth 认证，必须切换到 Model Studio API Key，否则 Qwen 提供商将无法工作。
+
+### MiniMax 图片生成（v2026.3.28）
+
+```json5
+{
+  "models": {
+    "providers": {
+      "minimax": {
+        "type": "minimax",
+        "apiKey": "${MINIMAX_API_KEY}",
+        "imageModel": "image-01"      // 图片生成和编辑模型
+      }
+    }
+  }
+}
+```
+
+**功能：**
+- 文生图（text-to-image）
+- 图生图（image-to-image 编辑）
+- 宽高比控制（aspect ratio）
+
+---
+
 ## 服务管理
 
 ### macOS (launchd)
@@ -1765,47 +2297,61 @@ journalctl --user -u openclaw-gateway.service -n 100 --no-pager
 
 ---
 
-## 更新摘要 (v2.1.0 - 2026-03-19)
+## 更新摘要 (v2026.3.28 - 2026-03-31)
 
-本次更新添加了 **QQ Bot 第三方渠道插件** 的完整文档：
+本次更新基于 OpenClaw **v2026.3.28**（最新版）官方发布说明和 GitHub 社区知识，全面同步最新功能：
 
-### 新增内容：
+### v2.3.0 新增内容（基于 v2026.3.28）：
 
-1. **QQ Bot 安装指南**
-   - 从 QQ 开放平台创建机器人步骤
-   - npm 安装和源码安装方法
-   - 单账户和多账户配置
+1. **xAI / Grok 集成**
+   - xAI Responses API 支持
+   - Grok 搜索插件自动启用
+   - `openclaw configure --section web` 快速配置
 
-2. **语音能力配置**
-   - STT（语音转文字）两级配置优先级
-   - TTS（文字转语音）两级配置优先级
+2. **Qwen 破坏性迁移**（必须操作）
+   - 废弃 `qwen-portal-auth` OAuth，迁移至 Model Studio API Key
+   - 提供迁移指南
 
-3. **富媒体使用方法**
-   - `<qqimg>` `<qqvoice>` `<qqfile>` `<qqvideo>` 标签格式
-   - 支持的文件类型和大小限制
+3. **MiniMax 图片生成**
+   - `image-01` 模型支持文生图、图生图
+   - 宽高比控制
 
-4. **常用命令**
-   - 向指定用户发送消息
-   - 多账户使用 `--account` 参数
-   - 升级方法
+4. **ACP 渠道扩展**（Discord、BlueBubbles、iMessage）
+   - `--bind here` 在这些渠道的实时对话中直接绑定 ACP 工作区
 
-5. **故障排除**
-   - 常见问题和解决方法
-   - 调试命令
+5. **OpenAI apply_patch 默认启用**
+   - OpenAI/Codex 模型无需手动配置
 
-### QQ Bot 主要功能：
+6. **插件自动加载**
+   - CLI 后端插件在配置中引用时自动加载
 
-- 🔒 **多场景支持** - C2C 私聊、群聊 @消息、频道消息、频道私信
-- 🖼️ **富媒体消息** - 支持图片、语音、视频、文件的收发
-- 🎙️ **语音能力 (STT/TTS)** - 语音转文字自动转录 & 文字转语音回复
-- ⏰ **定时推送** - 支持定时任务触发后主动推送消息
-- 🔗 **URL 无限制** - 私聊可直接发送 URL
-- ⌨️ **输入状态** - 实时显示"Bot 正在输入中…"状态
-- 🔄 **热更新** - 支持 npm 方式安装和无缝热更新
-- 📝 **Markdown** - 完整支持 Markdown 格式消息
-- 🛠️ **原生命令** - 支持 OpenClaw 原生命令
+### v2.2.0 内容（基于 v2026.3.24）：
 
-**技能现在涵盖了 OpenClaw 的所有主流渠道，包括：**
+1. **Microsoft Teams 渠道**（`@openclaw/msteams` 插件）
+   - Azure Bot 注册和 JWT 签名验证流程
+   - 完整配置示例和访问控制说明
+   - 故障排除指南
+
+2. **ACP 工作区绑定**
+   - `openclaw acp status` / `openclaw acp spawn codex --bind here`
+
+3. **自更新系统** — `openclaw update` / `--dry-run`
+
+4. **异步审批钩子** — `requireApproval`、Telegram/Discord 按钮审批
+
+5. **OpenAI API 兼容层** — Gateway `/v1/` 端点
+
+6. **统一文件上传** — Slack/Teams/Google Chat/BlueBubbles
+
+7. **新模型提供商** — Vercel AI、Kilo Gateway
+
+8. **技能安全** — 签名验证、VirusTotal 扫描、状态 UI 标签
+
+9. **记忆系统 v2** — 多语言、向量搜索、PII 脱敏
+
+10. **配置加固** — 新安装安全默认值、敏感密钥自动脱敏
+
+### 技能现在涵盖的所有主流渠道：
 - WhatsApp（官方内置）
 - Telegram（官方内置）
 - Signal（官方内置）
@@ -1813,6 +2359,7 @@ journalctl --user -u openclaw-gateway.service -n 100 --no-pager
 - Discord（官方内置）
 - Slack（官方内置）
 - Google Chat（官方内置）
+- **Microsoft Teams**（官方插件，v2026.3+）
 
 ---
 
