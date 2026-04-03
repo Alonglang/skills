@@ -1,0 +1,109 @@
+{
+  "skill_name": "ssh-host-ops",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "请帮我去 server-01 上看看 nginx 现在是不是在跑。",
+      "expected_output": "识别目标主机为 server-01，先检查本机 /etc/hosts 是否存在该主机，再检查 ssh -p 2822 root@server-01 的免密登录，随后在远端查看 nginx 状态并向用户汇报结果。",
+      "files": [],
+      "assertions": [
+        {
+          "name": "解析目标主机",
+          "description": "应明确提取出 server-01 是目标主机，而不是在本地执行命令。"
+        },
+        {
+          "name": "先检查本机 hosts",
+          "description": "应先通过 /etc/hosts 解析目标主机，而不是跳过主机解析步骤。"
+        },
+        {
+          "name": "检查或建立免密登录",
+          "description": "应在远端执行任务前检查 ssh -p 2822 root@server-01 的公钥登录，必要时使用 ssh-copy-id。"
+        },
+        {
+          "name": "在远端检查服务状态",
+          "description": "应通过远端 SSH 检查 nginx 状态，并向用户汇报关键结果。"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "请帮我在 mac 上把网关和 dns 改成 192.168.28.1。",
+      "expected_output": "识别目标主机为 mac；如果本机 /etc/hosts 还没有该 hostname，应先向用户询问 IP 并写入 hosts；随后确保 ssh -p 2822 root@mac 的免密登录可用；探测远端系统为 macOS 后，先查看当前网络状态，再用 macOS 原生命令修改网关和 DNS，最后验证变更结果。",
+      "files": [],
+      "assertions": [
+        {
+          "name": "缺少 hosts 映射时先询问 IP",
+          "description": "若 mac 不在 /etc/hosts 中，应先向用户索取 IP，而不是猜测地址。"
+        },
+        {
+          "name": "收到 IP 后写入本机 hosts",
+          "description": "在用户提供 IP 后，应把 mac 对应映射补充到本机 /etc/hosts，再继续 SSH 流程。"
+        },
+        {
+          "name": "固定连接方式",
+          "description": "应使用 ssh -p 2822 root@mac，而不是改变端口或用户名。"
+        },
+        {
+          "name": "先探测远端系统",
+          "description": "应先确认远端是 macOS，再决定网络配置命令。"
+        },
+        {
+          "name": "使用 macOS 网络命令",
+          "description": "应避免直接套用 Linux 网络命令，并在修改前后检查关键网络状态。"
+        },
+        {
+          "name": "修改前后都检查 macOS 网络状态",
+          "description": "应先读取当前默认路由、网络服务和 DNS，再在修改后重新检查这些状态。"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "去 nas 上装一下 tailscale，如果还没配免密登录就顺手配好。",
+      "expected_output": "识别目标主机为 nas，先解析 hosts，再检测 root@nas:2822 的免密登录；若尚未配置，则通过 ssh-copy-id 建立公钥登录；成功后在远端判断系统类型并安装 tailscale，然后把安装结果反馈给用户。",
+      "files": [],
+      "assertions": [
+        {
+          "name": "把免密配置纳入流程",
+          "description": "应在执行安装前检测免密登录，并在缺失时使用 ssh-copy-id。"
+        },
+        {
+          "name": "必要时生成本地公钥",
+          "description": "如果本机没有可用公钥，应先生成新的 ed25519 公钥再继续。"
+        },
+        {
+          "name": "先探测远端系统再安装",
+          "description": "应根据远端系统选择合适的安装命令，而不是盲目执行。"
+        },
+        {
+          "name": "反馈安装结果",
+          "description": "应明确告诉用户 tailscale 是否安装成功以及是否新建了免密登录。"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "帮我到 mini 上把 /etc/docker/daemon.json 里的 registry mirror 改成新的地址，然后重启 docker。",
+      "expected_output": "识别目标主机为 mini，完成 hosts 解析与免密登录检查后，在远端先查看 daemon.json 当前内容，再修改 registry mirror 配置并重启 docker，最后验证 docker 服务状态与配置结果。",
+      "files": [],
+      "assertions": [
+        {
+          "name": "远端修改前先读取当前配置",
+          "description": "应先检查 daemon.json 当前内容，而不是直接覆盖。"
+        },
+        {
+          "name": "修改发生在远端主机",
+          "description": "应通过 ssh 在 mini 上完成文件修改和服务重启，而不是误改本地。"
+        },
+        {
+          "name": "修改后验证 docker 状态",
+          "description": "应在重启后检查 docker 是否正常运行。"
+        },
+        {
+          "name": "汇报关键变更",
+          "description": "应告诉用户已修改的 registry mirror 和 docker 重启结果。"
+        }
+      ]
+    }
+  ]
+}
