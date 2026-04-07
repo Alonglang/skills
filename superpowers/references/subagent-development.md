@@ -1,15 +1,15 @@
 # Subagent-Driven Development Reference
 
 Source: obra/superpowers subagent-driven-development skill
-Adapted for OpenClaw (sessions_spawn instead of Claude Code Task tool)
+Adapted for OpenCode (使用 Task 子代理工具)
 
 ## Core Principle
 
 Fresh sub-agent per task + two-stage review (spec then quality) = high quality, fast iteration.
 
-## OpenClaw Dispatch Pattern
+## OpenCode Dispatch Pattern
 
-Use `sessions_spawn` for each role. Pass a structured prompt:
+Use `Task` tool for each role. Pass a structured prompt:
 
 ```
 GOAL: [one sentence — what outcome]
@@ -24,16 +24,16 @@ TASK: [paste full task text from plan doc]
 
 For each task in the plan:
 
-1. **Dispatch implementer sub-agent** via `sessions_spawn`
+1. **Dispatch implementer sub-agent** via `Task`
    - Include: full task text, plan file path, TDD constraint
    - Wait for completion announcement
 
-2. **Dispatch spec-reviewer sub-agent** via `sessions_spawn`
+2. **Dispatch spec-reviewer sub-agent** via `Task`
    - Include: what was implemented, plan requirements, git diff
    - Must confirm: code matches spec exactly
    - If gaps found → dispatch implementer again to fix
 
-3. **Dispatch code-quality reviewer sub-agent** via `sessions_spawn`
+3. **Dispatch code-quality reviewer sub-agent** via `Task`
    - Include: git diff, description of implementation
    - Must approve: clean code, no dead code, DRY, YAGNI
    - If issues found → dispatch implementer to fix, re-review

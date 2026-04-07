@@ -58,8 +58,8 @@ python skills/tubescribe/scripts/setup.py
 生成一个执行整个管道的子代理：
 
 ```python
-sessions_spawn(
-    task=f"""
+Task(
+    prompt=f"""
 ## TubeScribe: 处理 {youtube_url}
 
 ⚠️ 关键：不要安装任何软件。
