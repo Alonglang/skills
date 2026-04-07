@@ -58,6 +58,9 @@ python skills/tubescribe/scripts/setup.py
 生成一个执行整个管道的子代理：
 
 ```python
+# 使用你的 agent 对应的子代理工具
+# Claude Code/OpenCode: Task()
+# OpenClaw: sessions_spawn()
 Task(
     prompt=f"""
 ## TubeScribe: 处理 {youtube_url}
