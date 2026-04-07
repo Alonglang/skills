@@ -1,7 +1,6 @@
 ---
 name: maishou
-description:
-  获取商品在淘宝(Taobao)、天猫(TMall)、京东(JD.com)、拼多多(PinDuoDuo)、抖音(Douyin)、快手(KuaiShou)的最优价格、优惠券信息，并对比各大平台商品价格。当用户想购物、查询商品价格、寻找优惠券、对比不同平台价格时必须触发此技能。
+description: 获取商品在淘宝(Taobao)、天猫(TMall)、京东(JD.com)、拼多多(PinDuoDuo)、抖音(Douyin)、快手(KuaiShou)的最优价格、优惠券信息，并对比各大平台商品价格。当用户想购物、查询商品价格、寻找优惠券、对比不同平台价格时必须触发此技能。
 metadata:
   {
     "openclaw":

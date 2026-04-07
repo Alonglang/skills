@@ -3,7 +3,7 @@ name: bilibili-analyzer
 description: 自动分析B站视频内容，下载视频并拆解成帧图片，使用AI分析并生成详细的专题文档或实操教程。当用户提供B站链接、BV号，要求总结B站视频、提取B站视频内容、生成笔记、分析B站视频、下载B站视频时必须触发。
 metadata:
   short-description: B站视频AI分析工具
-source:
+attribution:
   - name: FFmpeg
     repository: https://github.com/FFmpeg/FFmpeg
     documentation: https://ffmpeg.org/documentation.html
