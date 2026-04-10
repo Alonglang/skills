@@ -1,15 +1,15 @@
 # Subagent-Driven Development Reference
 
 Source: obra/superpowers subagent-driven-development skill
-Adapted for OpenCode (使用 Task 子代理工具)
+适用于多种 Agent（Claude Code、Copilot、OpenCode、OpenClaw 等）
 
 ## Core Principle
 
 Fresh sub-agent per task + two-stage review (spec then quality) = high quality, fast iteration.
 
-## OpenCode Dispatch Pattern
+## 子代理调度模式
 
-Use `Task` tool for each role. Pass a structured prompt:
+使用你的 agent 对应的子代理工具（Task/sessions_spawn 等）。传递结构化提示：
 
 ```
 GOAL: [one sentence — what outcome]
@@ -24,16 +24,16 @@ TASK: [paste full task text from plan doc]
 
 For each task in the plan:
 
-1. **Dispatch implementer sub-agent** via `Task`
+1. **Dispatch implementer sub-agent** (via Task/sessions_spawn)
    - Include: full task text, plan file path, TDD constraint
    - Wait for completion announcement
 
-2. **Dispatch spec-reviewer sub-agent** via `Task`
+2. **Dispatch spec-reviewer sub-agent** (via Task/sessions_spawn)
    - Include: what was implemented, plan requirements, git diff
    - Must confirm: code matches spec exactly
    - If gaps found → dispatch implementer again to fix
 
-3. **Dispatch code-quality reviewer sub-agent** via `Task`
+3. **Dispatch code-quality reviewer sub-agent** (via Task/sessions_spawn)
    - Include: git diff, description of implementation
    - Must approve: clean code, no dead code, DRY, YAGNI
    - If issues found → dispatch implementer to fix, re-review
@@ -49,64 +49,97 @@ For each task in the plan:
 ## Implementer Sub-Agent Prompt Template
 
 ```
-You are implementing a coding task. Follow TDD strictly.
+## 任务：<task name>
 
-PLAN FILE: [path]
-TASK: [task N text verbatim]
+### 目标
+<one sentence>
 
-CONSTRAINTS:
-- Write failing test FIRST. Run it. Confirm it fails. Then implement.
-- Minimal implementation only — YAGNI
-- Commit after each green test: git add <files> && git commit -m "..."
-- Do NOT change files outside this task's scope
-- Do NOT add features not in the task
+### 上下文
+<why this matters, relevant background>
 
-VERIFY:
-- Run: [test command]
-- Expected: [expected output]
+### 计划文件
+<path to plan document>
 
-Report when done: what you implemented, test results, commit SHA.
+### 文件约束
+- 必须修改：<files>
+- 禁止修改：<files>
+- 遵循：<specific patterns or conventions>
+
+### 验证方式
+运行以下命令确认成功：
+```bash
+<test command>
+```
+期望输出：<expected output>
+
+### TDD 约束
+1. 先写失败的测试
+2. 实现代码使测试通过
+3. 重构（如果需要）
+4. 确保所有测试通过后再提交
+
+### 任务详情
+<paste full task text from plan>
 ```
 
-## Spec-Reviewer Sub-Agent Prompt Template
+## Spec Reviewer Prompt Template
 
 ```
-You are reviewing code for spec compliance only.
+## 规范审查：<feature name>
 
-PLAN FILE: [path]
-TASK BEING REVIEWED: [task N text]
-GIT RANGE: [base_sha..head_sha]
+### 实现概述
+<description of what was implemented>
 
-Review ONLY whether the implementation matches the spec.
-Report:
-- PASS or FAIL
-- Any spec gaps (what was specified but not implemented)
-- Do NOT comment on code style or quality
+### 计划要求
+<requirements from plan document>
+
+### 检查清单
+- [ ] 代码符合所有计划要求
+- [ ] 没有遗漏的功能点
+- [ ] 边界情况已处理
+- [ ] 错误处理适当
+
+### 问题
+如果发现问题，详细描述：
+- 位置：<file:line>
+- 问题：<description>
+- 建议：<how to fix>
+
+### 结论
+[ ] 批准
+[ ] 需要修改
 ```
 
-## Code-Quality Reviewer Sub-Agent Prompt Template
+## Code Quality Reviewer Prompt Template
 
 ```
-You are reviewing code quality only (not spec compliance).
+## 代码质量审查：<feature name>
 
-GIT RANGE: [base_sha..head_sha]
-DESCRIPTION: [what was implemented]
+### 实现摘要
+<brief description>
 
-Review for:
-- DRY violations
-- Dead code
-- YAGNI violations (unnecessary features)
-- Poor naming
-- Missing error handling
+### 检查清单
+- [ ] 代码清晰易读
+- [ ] 无死代码
+- [ ] 遵循 DRY 原则
+- [ ] 遵循 YAGNI 原则
+- [ ] 适当错误处理
+- [ ] 无硬编码敏感信息
+- [ ] 测试覆盖充分
 
-Severity: Critical / Important / Minor
-Report: approve or list issues by severity.
+### 具体问题
+列出发现的问题（如果有）
+
+### 结论
+[ ] 批准
+[ ] 需要修改
 ```
 
-## Review Severity Actions
+## Tips
 
-| Severity | Action |
-|----------|--------|
-| Critical | Fix before proceeding — blocks next task |
-| Important | Fix before proceeding |
-| Minor | Note, address later |
+- **保持子代理单一职责**：每个子代理只做一件事
+- **提供足够的上下文**：计划文件路径 + 相关背景
+- **明确验证方式**：告诉子代理如何确认成功
+- **使用结构化提示**：清晰的格式便于子代理理解
+- **等待完成宣布**：不要假设子代理会立即完成
+- **两阶段审查**：先规范审查，再质量审查
