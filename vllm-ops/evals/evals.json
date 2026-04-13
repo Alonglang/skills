@@ -1,0 +1,23 @@
+{
+  "skill_name": "vllm-ops",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我想在单机 4 卡上用 vllm serve 跑 Qwen，先给我推荐最稳妥的启动参数，并说明为什么这样配。",
+      "expected_output": "应给出面向 vllm serve 的推荐启动思路，覆盖模型启动、并行策略、关键参数、默认值 caveat，并体现 vLLM 语境下的稳妥建议。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我们现在吞吐不高，而且日志里偶尔有 preemption，应该先看哪些指标，再调哪些参数？",
+      "expected_output": "应先建议看 metrics 与日志中的 preemption/KV cache/等待队列等信号，再给出 gpu_memory_utilization、max_num_seqs、max_num_batched_tokens、parallelism 方向的调优建议。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我准备把 vLLM 部署到 Kubernetes，对外提供 API。除了 --api-key 之外，我还应该注意哪些安全问题？",
+      "expected_output": "应明确指出 --api-key 不是完整安全边界，并补充内网隔离、防火墙、未受保护端点、多模态 URL 限制等关键安全建议。",
+      "files": []
+    }
+  ]
+}
