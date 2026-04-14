@@ -1,6 +1,6 @@
 ---
 name: vllm-ops
-description: 面向 vLLM 的配置、维护、部署、开发与性能调优助手。只要用户提到 vllm、vllm serve、LLM 推理服务、engine args、serve args、KV cache、tensor parallel、pipeline parallel、quantization、benchmark、吞吐、延迟、OOM、分布式推理、OpenAI-compatible server、vLLM Kubernetes/Docker 部署、vLLM 故障排查，或希望获得 vLLM 的参数建议、调优建议、运维建议、开发接入建议时，都应使用此技能。
+description: 面向 vLLM 的配置、维护、部署、开发与性能调优助手。只要用户提到 vllm、vllm serve、LLM 推理服务、engine args、serve args、KV cache、tensor parallel、pipeline parallel、quantization、benchmark、吞吐、延迟、OOM、分布式推理、OpenAI-compatible server、vLLM Kubernetes/Docker 部署、vLLM 故障排查，或希望获得 vLLM 的参数建议、调优建议、运维建议、开发接入建议时，都应使用此技能。特别地，当用户在 NVIDIA DGX Spark / GB10 / SM121 上部署模型（包括 Gemma4、NVFP4、Marlin 后端相关问题）、遇到 CUTLASS FP4 崩溃、torch.compile aarch64 序列化问题、混合注意力架构 KV cache 异常、或 sglang 在 DGX Spark 上的兼容性问题时，必须使用此技能。
 ---
 
 # vLLM Ops
