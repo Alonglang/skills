@@ -637,6 +637,142 @@ from litellm.types.utils import Delta, ChatCompletionDeltaToolCall, Function
 
 ---
 
+## Web UI 问题
+
+### 20. Web UI 频繁报 "Application error: a client-side exception has occurred"
+
+**症状：** 打开 `http://host:4000/ui/` 后页面显示 "Application error: a client-side exception has occurred"，浏览器控制台可见 `/__next._tree.txt?_rsc=xxx` 返回 404。
+
+**根本原因：** LiteLLM 的 FastAPI 将 Next.js 静态导出挂载在 `/ui` 路径（`app.mount("/ui", StaticFiles(...))`），但 Next.js 前端构建时 **没有设置 `basePath: "/ui"`**，导致：
+- React Server Components（RSC）导航时在**根路径**请求路由树文件：`GET /__next._tree.txt`
+- 文件实际存在于容器内 `/app/litellm/proxy/_experimental/out/__next._tree.txt`
+- FastAPI 只在 `/ui/__next._tree.txt` 提供该文件（200 OK），根路径无 handler → **404 → 客户端崩溃**
+
+这是 LiteLLM 内置 Web UI 本身的构建问题，**不是用户配置错误**。
+
+**临时修复方案（不改端口、不加 nginx）：** 通过 `sitecustomize.py` 注入 Starlette 中间件，将 `/__next.*` 的所有请求 307 重定向到 `/ui/__next.*`。
+
+```python
+# 追加到 sitecustomize.py（已挂载到容器的 /app/sitecustomize.py）
+import sys as _sys
+import importlib.util as _ilu
+import importlib.abc as _ilabc
+
+
+class _PatchingLoader(_ilabc.Loader):
+    def __init__(self, real_loader):
+        self._real = real_loader
+
+    def create_module(self, spec):
+        if hasattr(self._real, "create_module"):
+            return self._real.create_module(spec)
+        return None
+
+    def exec_module(self, module):
+        self._real.exec_module(module)
+        try:
+            from starlette.middleware.base import BaseHTTPMiddleware
+            from starlette.responses import RedirectResponse
+
+            class _NextRscMiddleware(BaseHTTPMiddleware):
+                async def dispatch(self, request, call_next):
+                    if request.url.path.startswith("/__next."):
+                        target = "/ui" + request.url.path
+                        if request.url.query:
+                            target += "?" + request.url.query
+                        return RedirectResponse(target, status_code=307)
+                    return await call_next(request)
+
+            module.app.add_middleware(_NextRscMiddleware)
+        except Exception:
+            pass  # 绝不因 patch 失败影响主服务
+
+
+class _ProxyServerPatcher:
+    _target = "litellm.proxy.proxy_server"
+
+    def find_spec(self, fullname, path, target=None):
+        if fullname == self._target and fullname not in _sys.modules:
+            _sys.meta_path[:] = [h for h in _sys.meta_path if h is not self]
+            spec = _ilu.find_spec(fullname)
+            if spec is not None:
+                spec.loader = _PatchingLoader(spec.loader)
+            return spec
+        return None
+
+
+# 必须 insert(0) 而非 append，否则 PathFinder 先满足导入，hook 永远不触发
+_sys.meta_path.insert(0, _ProxyServerPatcher())
+```
+
+**关键技术细节：**
+- Python 3.4+ 必须用 `find_spec` API（`find_module` / `load_module` 在 Python 3.12+ 被完全忽略）
+- 必须用 `_sys.meta_path.insert(0, ...)` 而非 `.append()`，否则 `PathFinder` 先满足导入，自定义 hook 永远不触发
+- Starlette 的 `add_middleware()` 是前插（新加的在最外层），`app` 创建后、uvicorn 启动前添加是安全的（中间件栈懒加载）
+- `sitecustomize.py` 挂载为 `:ro` 只读时，必须编辑**宿主机文件**（`docker cp` 会失败）
+
+**验证方式：**
+```bash
+# 应返回 307（而非 404）
+curl -sv "http://localhost:4000/__next._tree.txt?_rsc=1r34m" 2>&1 | grep "< HTTP\|location:"
+# 目标文件应返回 200
+curl -o /dev/null -w "%{http_code}" "http://localhost:4000/ui/__next._tree.txt"
+```
+
+**可以移除补丁的条件：** 当 LiteLLM 官方修复了 Next.js 构建（加入 `basePath: "/ui"`），或改变了 UI 挂载方式，使 `/__next.*` 请求在根路径也能正常响应时。验证方法：不加任何补丁，直接访问 `GET http://host:4000/__next._tree.txt` 若返回 200 则补丁可移除。
+
+---
+
+### 21. `config.yaml` 与环境变量重复定义导致不一致
+
+**症状：** `config.yaml` 中的 `general_settings.master_key` 与 `docker-compose.yml` 中的 `LITELLM_MASTER_KEY` 值不同，导致行为不可预期。
+
+**原因：** `general_settings` 中的 `master_key` 和 `store_model_in_db` 等字段与对应的环境变量完全等价。两处同时维护容易发生不一致。
+
+**最佳实践：** 敏感配置统一通过环境变量管理，`config.yaml` 中的 `general_settings` 只保留非机密配置（如 `alerting`）：
+
+```yaml
+# ❌ 避免：config.yaml 中重复配置
+general_settings:
+  master_key: "Fusion123"        # 与 LITELLM_MASTER_KEY 重复
+  store_model_in_db: true        # 与 STORE_MODEL_IN_DB 重复
+
+# ✅ 推荐：只在 docker-compose / K8s 的 env 中设置
+general_settings: {}             # 或只保留非机密字段
+```
+
+**对应环境变量：**
+
+| config.yaml `general_settings` 字段 | 对应环境变量 |
+|--------------------------------------|------------|
+| `master_key` | `LITELLM_MASTER_KEY` |
+| `store_model_in_db` | `STORE_MODEL_IN_DB` |
+| `database_url` | `DATABASE_URL` |
+
+---
+
+### 22. Docker `host` 网络模式下 `no_proxy` 缺少服务器自身 IP
+
+**症状：** 使用 `network_mode: "host"` 时，容器内对宿主机 IP（如 `10.32.4.46`）的请求通过企业代理，导致请求失败或超时。
+
+**原因：** `no_proxy`/`NO_PROXY` 中缺少服务器真实 IP，当容器内请求 LiteLLM 自身（如健康检查、UI 内的 API 请求）时会走代理。
+
+**解决方案：**
+```yaml
+# docker-compose.yml
+environment:
+  no_proxy: "localhost,127.0.0.1,10.32.4.46"
+  NO_PROXY: "localhost,127.0.0.1,10.32.4.46"
+  http_proxy: "http://user:pass@proxy:port"
+  https_proxy: "http://user:pass@proxy:port"
+  HTTP_PROXY: "http://user:pass@proxy:port"
+  HTTPS_PROXY: "http://user:pass@proxy:port"
+```
+
+**注意：** `no_proxy` 和 `NO_PROXY` 都需要设置（不同工具/库读不同的变量名）。
+
+---
+
 ## 升级故障恢复
 
 ### 升级后服务异常
