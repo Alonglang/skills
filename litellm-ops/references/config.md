@@ -75,9 +75,10 @@ model_list:
 |----------|-----------|---------|
 | OpenAI | `openai/gpt-4o` | `api_key` |
 | Azure OpenAI | `azure/deployment-name` | `api_key`, `api_base`, `api_version` |
-| Anthropic | `anthropic/claude-sonnet-4-20250514` | `api_key` |
+| Anthropic | `anthropic/claude-sonnet-4-5` | `api_key` |
 | AWS Bedrock | `bedrock/anthropic.claude-v2` | `aws_access_key_id`, `aws_secret_access_key`, `aws_region_name` |
 | Google Vertex AI | `vertex_ai/gemini-pro` | `vertex_project`, `vertex_location`, `vertex_credentials` |
+| Google Gemini | `gemini/gemini-2.5-pro` | `api_key`（`GEMINI_API_KEY`） |
 | HuggingFace | `huggingface/model-name` | `api_base`（推理端点 URL） |
 | Ollama | `ollama/llama3` | `api_base: http://localhost:11434` |
 | vLLM | `openai/model-name` | `api_base: http://vllm-host:8000/v1` |
@@ -86,6 +87,8 @@ model_list:
 | Deepseek | `deepseek/deepseek-chat` | `api_key` |
 | Cohere | `cohere/command-r-plus` | `api_key` |
 | Mistral | `mistral/mistral-large-latest` | `api_key` |
+| xAI / Grok | `xai/grok-3` | `api_key`（`XAI_API_KEY`） |
+| Nebius AI | `nebius/model-name` | `api_key`, `api_base` |
 
 ### Azure OpenAI 完整示例
 
@@ -105,7 +108,7 @@ model_list:
 ```yaml
 - model_name: claude-sonnet
   litellm_params:
-    model: bedrock/anthropic.claude-sonnet-4-20250514-v1:0
+    model: bedrock/anthropic.claude-sonnet-4-5-v1:0
     aws_access_key_id: os.environ/AWS_ACCESS_KEY_ID
     aws_secret_access_key: os.environ/AWS_SECRET_ACCESS_KEY
     aws_region_name: us-east-1
@@ -295,7 +298,57 @@ litellm --config config.yaml --num_workers 4
 
 ---
 
-## 配置验证清单
+## 优先级路由（Priority Routing）
+
+为不同用户/密钥分配不同优先级，高优先级流量在资源紧张时优先路由（v1.80+）：
+
+```yaml
+router_settings:
+  routing_strategy: usage-based-routing-v2
+  routing_strategy_args:
+    # 优先级路由：数字越小优先级越高
+    priority_based_routing: true
+    # 默认优先级（密钥/团队级可通过 metadata.priority 覆盖）
+    default_priority: 10
+```
+
+客户端请求时在 metadata 指定优先级：
+
+```json
+{
+  "model": "gpt-4o",
+  "messages": [{"role": "user", "content": "urgent request"}],
+  "metadata": {"priority": 1}
+}
+```
+
+或在创建密钥时预设优先级：
+
+```bash
+curl -X POST http://localhost:4000/key/generate \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{
+    "models": ["gpt-4o"],
+    "metadata": {"priority": 1}
+  }'
+```
+
+---
+
+## environment_variables（配置文件内嵌环境变量）
+
+在 config.yaml 中直接定义环境变量（方便容器部署时统一管理）：
+
+```yaml
+environment_variables:
+  OPENAI_API_KEY: "sk-xxx"          # 不推荐，建议通过容器环境变量传入
+  LANGFUSE_HOST: "https://cloud.langfuse.com"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+```
+
+> 建议敏感凭证通过容器环境变量（`-e` 或 K8s Secret）传入，非敏感配置（如 OTEL 端点）可在 config.yaml 的 `environment_variables` 中定义，便于统一管理。
+
+---
 
 - [ ] 每个 model_list 条目都有 `model_name` 和 `litellm_params.model`
 - [ ] `model` 字段使用正确的 `provider/model-name` 格式
