@@ -1,11 +1,13 @@
 ---
 name: litellm-ops
-description: LiteLLM AI Gateway（Proxy）的服务运维技能。覆盖部署（Docker/K8s/Helm）、config.yaml配置、虚拟密钥管理、路由策略、成本追踪、护栏、故障排查，以及全部733个API端点的使用方式。当用户需要部署LiteLLM、编写或修改LiteLLM配置文件、管理LiteLLM虚拟密钥和预算、排查LiteLLM故障、配置LiteLLM路由策略或回退、接入新的LLM Provider到LiteLLM、配置LiteLLM护栏（PII/内容安全）、设置LiteLLM可观测性（Langfuse/OTEL/DataDog）、调用LiteLLM API端点（推理/管理/MCP/Agents/Batch/文件/缓存/Pass-through等）时，必须触发此技能。只要用户提及litellm、AI Gateway、LLM代理网关、LLM Proxy、统一LLM接口、litellm API，就使用此技能。
+description: LiteLLM AI Gateway（Proxy）的服务运维技能。覆盖部署（Docker/K8s/Helm）、config.yaml配置、虚拟密钥管理、路由策略（含优先级路由）、成本追踪、护栏（PII Masking 2.0）、故障排查，以及全部API端点的使用方式（推理/MCP/Agents/A2A/Batch等）。当用户需要部署LiteLLM、编写或修改LiteLLM配置文件、管理LiteLLM虚拟密钥和预算、排查LiteLLM故障、配置LiteLLM路由策略或回退、接入新的LLM Provider到LiteLLM（OpenAI/Anthropic/Gemini/Bedrock/vLLM等）、配置LiteLLM护栏（PII/内容安全）、设置LiteLLM可观测性（Langfuse/OTEL/DataDog）、使用LiteLLM MCP Server Gateway或A2A Agent Gateway、调用LiteLLM API端点（推理/管理/MCP/Agents/Batch/文件/缓存/Pass-through等）时，必须触发此技能。只要用户提及litellm、AI Gateway、LLM代理网关、LLM Proxy、统一LLM接口、litellm API，就使用此技能。
 ---
 
 # LiteLLM 服务运维技能
 
-LiteLLM 是一个统一的 AI Gateway / LLM Proxy，用 **OpenAI 兼容格式** 统一 100+ LLM 提供商（OpenAI、Azure、Anthropic、Bedrock、Vertex AI 等）。本技能覆盖 LiteLLM Proxy Server 的全生命周期运维。
+LiteLLM 是一个统一的 AI Gateway / LLM Proxy，用 **OpenAI 兼容格式** 统一 100+ LLM 提供商（OpenAI、Azure、Anthropic、Bedrock、Vertex AI、Gemini、Deepseek 等）。本技能覆盖 LiteLLM Proxy Server 的全生命周期运维。
+
+> **当前最新稳定版本：** `v1.83.3-stable`（2026年3月）。Docker镜像：`ghcr.io/berriai/litellm:v1.83.3-stable`。升级时注意 v1.83+ 的 Prometheus 延迟直方图桶数量变更（破坏性变更，详见 observability.md）。
 
 ---
 
@@ -31,7 +33,7 @@ LiteLLM 是一个统一的 AI Gateway / LLM Proxy，用 **OpenAI 兼容格式** 
 
 **请求链路详解：** Client → `proxy_server.py`（接收请求） → 认证（virtual key / JWT） → `pre_call` hooks（护栏、PII检测） → `router.py`（路由策略选择部署） → `main.py`（litellm.completion()） → `llm_http_handler.py`（transform_request） → Provider API → transform_response → `post_call` hooks（输出护栏） → 异步日志（Langfuse/OTEL/DB花费写入） → 返回客户端
 
-**性能基准：** P95 延迟 ~8ms @ 1000 RPS（不含 Provider 延迟）
+**性能基准：** P95 延迟 ~2.7ms @ 1000 RPS（较旧版本提升约 2.9x，不含 Provider 延迟）
 
 ---
 
@@ -44,9 +46,9 @@ LiteLLM 是一个统一的 AI Gateway / LLM Proxy，用 **OpenAI 兼容格式** 
 | 🚀 部署/升级 LiteLLM | [deploy.md](references/deploy.md) | Docker / K8s / Helm / 高流量配置 |
 | ⚙️ 编写/修改配置 | [config.md](references/config.md) | config.yaml 四大节完整规范 |
 | 🔑 密钥/预算/限流 | [keys_budgets.md](references/keys_budgets.md) | 虚拟密钥 / 预算层级 / RPM-TPM 限制 |
-| 🔀 路由/回退/重试 | [routing.md](references/routing.md) | 7种路由策略 / 3种回退类型 / 冷却时间 |
+| 🔀 路由/回退/重试 | [routing.md](references/routing.md) | 8种路由策略（含优先级路由）/ 3种回退类型 / 冷却时间 |
 | 📊 监控/日志/成本 | [observability.md](references/observability.md) | Langfuse / OTEL / DataDog / 成本追踪 |
-| 🛡️ 护栏/安全策略 | [guardrails.md](references/guardrails.md) | 35+ 护栏 / PII / 内容过滤 |
+| 🛡️ 护栏/安全策略 | [guardrails.md](references/guardrails.md) | 35+ 护栏 / PII Masking 2.0 / 内容过滤 |
 | 🔧 故障排查 | [troubleshoot.md](references/troubleshoot.md) | DB不同步 / Redis / SSL / 死锁 / 国产模型工具调用 |
 | 🤖 国产模型工具调用修复 | [troubleshoot.md#国产模型--特殊-provider-工具调用问题](references/troubleshoot.md) | GLM XML泄漏 / finish_reason修复 / Agent停止问题 |
 
@@ -107,7 +109,7 @@ docker run -d --name litellm \
   -e REDIS_HOST="redis" -e REDIS_PORT="6379" \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -p 4000:4000 \
-  ghcr.io/berriai/litellm:main-v1.65.0-stable \
+  ghcr.io/berriai/litellm:v1.83.3-stable \
   --config /app/config.yaml
 ```
 
@@ -159,7 +161,7 @@ model_list:
 
   - model_name: claude-sonnet        # 可用于回退
     litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
+      model: anthropic/claude-sonnet-4-5
       api_key: os.environ/ANTHROPIC_API_KEY
 
 litellm_settings:
@@ -269,7 +271,7 @@ litellm_settings:
 ## 生产部署检查清单
 
 ### 基础配置
-- [ ] 固定镜像版本（不用 `latest`，用 `main-v1.65.0-stable`）
+- [ ] 固定镜像版本（不用 `latest`，用 `v1.83.3-stable`；非root镜像用 `ghcr.io/berriai/litellm-non_root:v1.83.3-stable`）
 - [ ] 配置 PostgreSQL（密钥管理 + 花费追踪需要）
 - [ ] 配置 Redis（多实例 / 缓存 / 分布式限流需要）
 - [ ] 设置强 `master_key` 和 `LITELLM_SALT_KEY`
