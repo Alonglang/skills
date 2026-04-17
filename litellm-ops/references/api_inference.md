@@ -19,6 +19,9 @@
 - [OCR（光学字符识别）](#ocr)
 - [Video（视频生成）](#video)
 - [Realtime（实时语音）](#realtime)
+- [Search（Web 搜索）](#search)
+- [Google GenAI（原生 Gemini API）](#google-genai)
+- [Anthropic 原生 API（Beta）](#anthropic-native-api-beta)
 
 ---
 
@@ -549,3 +552,178 @@ curl -X POST http://localhost:4000/v1/realtime/calls \
 | 429 | Rate Limited | 超过 RPM/TPM 限制 |
 | 500 | Internal Error | 服务端错误 |
 | 503 | Service Unavailable | Provider 连接失败 |
+
+---
+
+## Search（Web 搜索）
+
+LiteLLM 支持通过统一接口调用多种 Web 搜索工具（Tavily、Bing、Google Search 等），并可在 Chat Completions 中使用搜索结果增强回答。
+
+### 搜索调用
+
+```bash
+# 直接搜索（用默认搜索工具）
+curl -X POST http://localhost:4000/v1/search \
+  -H "Authorization: Bearer sk-your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "LiteLLM latest version 2025",
+    "num_results": 5
+  }'
+
+# 用特定搜索工具搜索
+curl -X POST http://localhost:4000/v1/search/tavily \
+  -H "Authorization: Bearer sk-your-key" \
+  -d '{"query": "AI news today"}'
+
+# 列出可用搜索工具
+curl http://localhost:4000/v1/search/tools \
+  -H "Authorization: Bearer sk-your-key"
+```
+
+### 搜索工具管理（管理员）
+
+```bash
+# 列出所有搜索工具（含连接状态）
+curl http://localhost:4000/search_tools/list \
+  -H "Authorization: Bearer sk-master-key"
+
+# 获取可用搜索提供商
+curl http://localhost:4000/search_tools/ui/available_providers \
+  -H "Authorization: Bearer sk-master-key"
+
+# 创建搜索工具
+curl -X POST http://localhost:4000/search_tools \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{
+    "name": "my-tavily",
+    "provider": "tavily",
+    "api_key": "tvly-xxx"
+  }'
+
+# 测试搜索工具连接
+curl -X POST http://localhost:4000/search_tools/test_connection \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"search_tool_id": "tool-xxx"}'
+
+# 更新搜索工具
+curl -X PUT http://localhost:4000/search_tools/{search_tool_id} \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"api_key": "new-key"}'
+
+# 删除搜索工具
+curl -X DELETE http://localhost:4000/search_tools/{search_tool_id} \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+### 在 Chat Completions 中使用搜索
+
+通过 `web_search_options` 在 Chat Completions 中启用搜索增强：
+
+```json
+{
+  "model": "gemini/gemini-2.5-pro",
+  "messages": [{"role": "user", "content": "今天的 AI 新闻有什么？"}],
+  "web_search_options": {
+    "search_context_size": "high"
+  }
+}
+```
+
+---
+
+## Google GenAI（原生 Gemini API）
+
+LiteLLM 暴露 Google Gemini 的原生 API 端点（`/models/{model}:generateContent` 格式），适合需要 Google 原生格式兼容性的客户端。
+
+```bash
+# 原生 Gemini 内容生成
+curl -X POST http://localhost:4000/models/gemini-2.5-pro:generateContent \
+  -H "Authorization: Bearer sk-your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Hello!"}]}
+    ]
+  }'
+
+# 流式生成
+curl -X POST http://localhost:4000/models/gemini-2.5-pro:streamGenerateContent \
+  -H "Authorization: Bearer sk-your-key" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "Tell me a story"}]}]
+  }'
+
+# Token 计数
+curl -X POST http://localhost:4000/models/gemini-2.5-pro:countTokens \
+  -H "Authorization: Bearer sk-your-key" \
+  -d '{"contents": [{"role": "user", "parts": [{"text": "Hello world"}]}]}'
+
+# v1beta 路径（等同）
+curl -X POST http://localhost:4000/v1beta/models/gemini-2.5-pro:generateContent \
+  -H "Authorization: Bearer sk-your-key" \
+  -d '{"contents": [...]}'
+```
+
+---
+
+## Anthropic 原生 API（Beta）
+
+LiteLLM 支持 Anthropic 的原生消息格式（`/v1/messages`），以及 Token 计数和 Skills API。
+
+### Anthropic 原生消息
+
+```bash
+# Anthropic /v1/messages 格式（直接用 Anthropic SDK 格式）
+curl -X POST http://localhost:4000/v1/messages \
+  -H "Authorization: Bearer sk-your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello, Claude!"}]
+  }'
+
+# Token 计数
+curl -X POST http://localhost:4000/v1/messages/count_tokens \
+  -H "Authorization: Bearer sk-your-key" \
+  -d '{
+    "model": "claude-sonnet-4-5",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### Anthropic Skills API（Beta）
+
+```bash
+# 创建技能
+curl -X POST http://localhost:4000/v1/skills \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"name": "my-skill", "description": "Custom skill"}'
+
+# 列出所有技能
+curl http://localhost:4000/v1/skills \
+  -H "Authorization: Bearer sk-your-key"
+
+# 获取技能详情
+curl http://localhost:4000/v1/skills/{skill_id} \
+  -H "Authorization: Bearer sk-your-key"
+
+# 删除技能
+curl -X DELETE http://localhost:4000/v1/skills/{skill_id} \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+### Video（视频生成，完整端点）
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/videos` | GET | 列出视频 |
+| `/v1/videos` | POST | 生成视频 |
+| `/v1/videos/{video_id}` | GET | 查询视频状态 |
+| `/v1/videos/{video_id}/content` | GET | 获取视频内容 |
+| `/v1/videos/{video_id}/remix` | POST | Remix 视频 |
+| `/v1/videos/edits` | POST | 视频编辑 |
+| `/v1/videos/extensions` | POST | 视频扩展 |
+| `/v1/videos/characters` | POST | 创建视频角色 |
+| `/v1/videos/characters/{character_id}` | GET | 获取角色 |
