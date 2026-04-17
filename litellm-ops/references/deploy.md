@@ -24,6 +24,14 @@ docker run -d --name litellm \
   -p 4000:4000 \
   ghcr.io/berriai/litellm:main-stable \
   --config /app/config.yaml --port 4000
+
+# 非 root 镜像（安全加固环境推荐）
+docker run -d --name litellm \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -p 4000:4000 \
+  ghcr.io/berriai/litellm-non_root:main-stable \
+  --config /app/config.yaml --port 4000
 ```
 
 ### 生产部署（带 PostgreSQL + Redis）
@@ -38,7 +46,7 @@ docker run -d --name litellm \
   -e LITELLM_SALT_KEY="your-random-salt-string" \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -p 4000:4000 \
-  ghcr.io/berriai/litellm:main-v1.65.0-stable \
+  ghcr.io/berriai/litellm:v1.82.3-stable \
   --config /app/config.yaml --port 4000
 ```
 
@@ -49,7 +57,7 @@ docker run -d --name litellm \
 version: "3.9"
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:main-v1.65.0-stable
+    image: ghcr.io/berriai/litellm:v1.82.3-stable
     command: --config /app/config.yaml --port 4000
     ports:
       - "4000:4000"
@@ -123,7 +131,7 @@ replicaCount: 3
 
 image:
   repository: ghcr.io/berriai/litellm
-  tag: main-v1.65.0-stable
+  tag: v1.82.3-stable
 
 masterKey: sk-your-master-key
 
@@ -208,18 +216,37 @@ stringData:
 | 标签格式 | 说明 | 适用 |
 |---------|------|------|
 | `main-stable` | 最新稳定版（滚动更新） | 测试 |
-| `main-v1.65.0-stable` | 固定版本 | **生产推荐** |
+| `v1.82.3-stable` | 固定版本 | **生产推荐** |
 | `main-latest` | 最新开发版 | 不推荐 |
+
+> **镜像变体：** `ghcr.io/berriai/litellm-non_root:v1.82.3-stable` 以非 root 用户运行，适合安全加固或合规要求严格的环境。
 
 **升级策略：**
 1. **备份数据库**：`pg_dump -h db-host -U user -d litellm > backup_$(date +%Y%m%d).sql`
 2. 先在 staging 环境测试新版本
-3. 检查 [CHANGELOG](https://github.com/BerriAI/litellm/releases) 的 Breaking Changes
+3. 检查 [CHANGELOG](https://github.com/BerriAI/litellm/releases) 的 Breaking Changes（**v1.83+ Prometheus 延迟桶数量有破坏性变更**，见 observability.md）
 4. 升级镜像版本
 5. DB Schema 自动迁移（Prisma）——LiteLLM 启动时自动执行
 6. 迁移失败时：`pip install litellm-proxy-extras && litellm-proxy-extras db migrate`
 7. 升级后运行 `/health` 检查模型连通性
 8. 验证 `/spend/logs` 花费数据完整性
+
+### 镜像签名验证（v1.83.0+ 生产推荐）
+
+从 v1.83.0 起，所有 LiteLLM Docker 镜像均使用 cosign 签名。生产部署建议验证镜像签名：
+
+```bash
+# 安装 cosign
+brew install cosign   # macOS
+# 或 https://docs.sigstore.dev/cosign/system_config/installation/
+
+# 验证镜像签名
+cosign verify \
+  --key https://raw.githubusercontent.com/BerriAI/litellm/main/cosign.pub \
+  ghcr.io/berriai/litellm:v1.82.3-stable
+
+# K8s 可配置 Sigstore Policy Controller 自动拦截未签名镜像
+```
 
 ---
 
@@ -324,4 +351,3 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 }
-```
