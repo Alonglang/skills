@@ -54,6 +54,8 @@ litellm_settings:
 | Lunary | LLM 监控 | 回调 | 轻量选择 |
 | Sentry | 错误追踪 | 回调 | 错误监控 |
 | Slack | 告警 | general_settings | 即时通知 |
+| Arize AI | LLM 可观测性 | 回调 | 企业级监控 |
+| Helicone | LLM 监控 | 回调 + 头信息 | 轻量 SaaS 选择 |
 
 ---
 
@@ -142,6 +144,8 @@ export DD_SITE="datadoghq.com"
 ## Prometheus 指标
 
 LiteLLM 内置 Prometheus 指标端点，在 **Proxy 同一端口（4000）** 暴露。
+
+> ⚠️ **v1.83 破坏性变更**：`litellm_request_duration_seconds` 直方图的默认延迟桶（LATENCY_BUCKETS）从 35 个减少到 18 个边界值。升级到 v1.83+ 后，引用旧桶边界（如 `le="1.5"` 或 `le="9.5"`）的 PromQL 查询/Grafana 面板会返回空数据，需相应更新查询。
 
 ```bash
 # 指标端点（无需认证）
