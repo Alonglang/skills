@@ -17,6 +17,10 @@
 - [项目管理（5 端点）](#项目管理)
 - [模型管理（20 端点）](#模型管理)
 - [预算与花费追踪（36 端点）](#预算与花费追踪)
+- [标签管理（12 端点）](#标签管理)
+- [安全策略（Policies，19 端点）](#安全策略)
+- [审计日志（2 端点）](#审计日志)
+- [回退规则管理（3 端点）](#回退规则管理)
 
 ---
 
@@ -743,3 +747,212 @@ curl -X POST http://localhost:4000/usage/ai/chat \
   -H "Authorization: Bearer sk-master-key" \
   -d '{"question": "What was the most expensive model last month?"}'
 ```
+
+---
+
+## 标签管理（Tag Management）
+
+标签可用于分类请求、追踪花费、实现 tag-based 路由，以及统计每个标签的 DAU/WAU/MAU。
+
+```bash
+# 创建标签
+curl -X POST http://localhost:4000/tag/new \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"name": "production", "description": "生产环境请求"}'
+
+# 列出所有标签（含预算信息）
+curl http://localhost:4000/tag/list \
+  -H "Authorization: Bearer sk-master-key"
+
+# 查询标签信息
+curl -X POST http://localhost:4000/tag/info \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"names": ["production", "dev"]}'
+
+# 更新标签
+curl -X POST http://localhost:4000/tag/update \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"name": "production", "description": "updated description"}'
+
+# 删除标签
+curl -X POST http://localhost:4000/tag/delete \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"name": "old-tag"}'
+```
+
+### 标签用量统计
+
+```bash
+# 标签汇总（请求数、Token、花费）
+curl http://localhost:4000/tag/summary \
+  -H "Authorization: Bearer sk-master-key"
+
+# 每日活跃用户（按标签）
+curl "http://localhost:4000/tag/dau?tag=production" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 每周活跃用户
+curl "http://localhost:4000/tag/wau?tag=production" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 每月活跃用户
+curl "http://localhost:4000/tag/mau?tag=production" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 每日活动明细（按标签过滤）
+curl "http://localhost:4000/tag/daily/activity?tags=production,dev&start_date=2024-03-01" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 获取所有不同用户代理标签
+curl http://localhost:4000/tag/distinct \
+  -H "Authorization: Bearer sk-master-key"
+
+# 每用户分析（按标签）
+curl "http://localhost:4000/tag/user-agent/per-user-analytics?tag=production" \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+---
+
+## 安全策略（Policies）
+
+策略（Policies）是 v1.83+ 引入的企业级安全特性，可将护栏规则组合成可复用的策略并附加到密钥/团队上。
+
+### 策略 CRUD
+
+```bash
+# 创建策略
+curl -X POST http://localhost:4000/policies \
+  -H "Authorization: Bearer sk-master-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "policy_name": "pii-policy",
+    "description": "PII 保护策略",
+    "guardrail_ids": ["guardrail-xxx"]
+  }'
+
+# 列出所有策略
+curl http://localhost:4000/policies/list \
+  -H "Authorization: Bearer sk-master-key"
+
+# 获取策略详情
+curl http://localhost:4000/policies/{policy_id} \
+  -H "Authorization: Bearer sk-master-key"
+
+# 更新策略
+curl -X PUT http://localhost:4000/policies/{policy_id} \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"description": "updated"}'
+
+# 删除策略
+curl -X DELETE http://localhost:4000/policies/{policy_id} \
+  -H "Authorization: Bearer sk-master-key"
+
+# 更新策略版本状态（draft → published）
+curl -X PUT http://localhost:4000/policies/{policy_id}/status \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"status": "published"}'
+```
+
+### 策略附件（将策略附加到密钥/团队）
+
+```bash
+# 创建附件（将策略附加到密钥）
+curl -X POST http://localhost:4000/policies/attachments \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"policy_id": "policy-xxx", "key_id": "sk-xxx"}'
+
+# 评估影响（附加前预估影响范围）
+curl -X POST http://localhost:4000/policies/attachments/estimate-impact \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"policy_id": "policy-xxx"}'
+
+# 列出所有附件
+curl http://localhost:4000/policies/attachments/list \
+  -H "Authorization: Bearer sk-master-key"
+
+# 删除附件
+curl -X DELETE http://localhost:4000/policies/attachments/{attachment_id} \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+### 策略测试与解析
+
+```bash
+# 测试策略管道（用样本消息验证）
+curl -X POST http://localhost:4000/policies/test-pipeline \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{
+    "policy_id": "policy-xxx",
+    "messages": [{"role": "user", "content": "My SSN is 123-45-6789"}]
+  }'
+
+# 解析上下文对应的策略（查看某密钥/团队实际生效的策略）
+curl -X POST http://localhost:4000/policies/resolve \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"key_id": "sk-xxx"}'
+
+# 策略用量概览
+curl http://localhost:4000/policies/usage/overview \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+### 策略版本管理
+
+```bash
+# 列出策略所有版本
+curl "http://localhost:4000/policies/name/pii-policy/versions" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 创建新版本（从现有版本 fork）
+curl -X POST "http://localhost:4000/policies/name/pii-policy/versions" \
+  -H "Authorization: Bearer sk-master-key" \
+  -d '{"source_version": 1}'
+
+# 比较两个版本
+curl "http://localhost:4000/policies/compare?version_a=1&version_b=2" \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+---
+
+## 审计日志（Audit Logging）
+
+记录所有管理操作的变更历史（谁、何时、对什么资源做了什么操作）。
+
+```bash
+# 获取所有审计日志（含分页和过滤）
+curl "http://localhost:4000/audit?start_date=2024-03-01&end_date=2024-03-31&action_type=key.generate" \
+  -H "Authorization: Bearer sk-master-key"
+
+# 获取单条审计日志详情
+curl http://localhost:4000/audit/{audit_log_id} \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+---
+
+## 回退规则管理（Fallback Management）
+
+通过 API 动态管理模型回退配置（无需重启 Proxy）。
+
+```bash
+# 创建/更新回退规则
+curl -X POST http://localhost:4000/fallback \
+  -H "Authorization: Bearer sk-master-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_name": "gpt-4o",
+    "fallbacks": ["claude-sonnet", "gemini-pro"]
+  }'
+
+# 查看某模型的回退配置
+curl http://localhost:4000/fallback/gpt-4o \
+  -H "Authorization: Bearer sk-master-key"
+
+# 删除回退规则
+curl -X DELETE http://localhost:4000/fallback/gpt-4o \
+  -H "Authorization: Bearer sk-master-key"
+```
+
+> 通过 API 设置的回退规则会与 config.yaml 中的 `router_settings.fallbacks` 合并生效。
