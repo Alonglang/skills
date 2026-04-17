@@ -174,7 +174,7 @@ curl -X POST http://localhost:4000/team/new \
   }'
 ```
 
-### 全局强制（default_on）
+## 全局强制（default_on）
 
 ```yaml
 litellm_settings:
@@ -185,6 +185,21 @@ litellm_settings:
         mode: pre_call
         default_on: true      # 所有请求强制执行，无需客户端指定
 ```
+
+## PII Masking 2.0（UI 管理）
+
+v1.75+ 起支持在 LiteLLM UI 中可视化管理 PII 实体配置，无需修改 YAML 文件：
+
+1. 进入 LiteLLM UI → **Guardrails** → **PII Masking**
+2. 选择要保护的 PII 实体类型（如 EMAIL_ADDRESS、PHONE_NUMBER、SSN 等）
+3. 为每种实体配置动作（MASK / BLOCK / REDACT / ANONYMIZE）
+4. 设置是否对输出内容也启用 PII 检测（`output_parse_pii`）
+5. 保存后立即生效，无需重启 Proxy
+
+**UI 管理的优势：**
+- 动态更新护栏规则（无需重启）
+- 可视化查看 PII 检测命中率（在 Logs 界面）
+- 支持按团队/密钥级别配置不同的 PII 策略
 
 ---
 
